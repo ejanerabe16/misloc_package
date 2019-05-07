@@ -1,0 +1,7 @@
+
+physical_constants:
+  c: !!float 2.99792458e10
+  nm: !!float 1e-7
+  hbar: !!float 6.582119514e-16
+  e: !!float 4.80320425e-10
+  nA: !!float 6.02e23 

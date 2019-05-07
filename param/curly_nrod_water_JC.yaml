@@ -1,0 +1,27 @@
+fluorophore:
+  extinction_coeff: 200000.0
+  lifetime: 3.8e-09
+  mass_gamma: 0.075
+  res_energy: 1.86 ## long mode peak
+  # res_energy: 2.4 ## short mode peak
+  test_gamma: 0.075
+general:
+  background_ref_index: 1.33 ## WATER!!!
+  coupling: ff
+  drive_amp: 30.0
+  drive_energy: 1.86 ## long mode peak
+  # drive_energy: 2.4 ## short mode peak
+optics:
+  lens_points: 1000 
+  magnification: 1.0 
+  numerical_aperture: 1.0
+  obj_f_len: 0.2
+  sensor_size: 2000
+  sensor_pts: 100
+plasmon:
+  ## updated 02/21/18 
+  fit_eps_inf: 28.98570393
+  fit_hbar_gamma: 0.09766546
+  fit_hbar_wp: 13.58850188
+  fit_a1: 51.77701186
+  fit_a2: 15.96014311
