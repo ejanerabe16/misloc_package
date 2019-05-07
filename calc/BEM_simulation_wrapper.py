@@ -11,15 +11,14 @@ from scipy import interpolate
 import scipy.io as sio
 import scipy.special as spf
 
-## import diffrantion integral solver from Optics folder
-project_path = os.path.abspath(os.path.join('..'))
-# sys.path.append(project_path)
 
 from ..optics import diffraction_int as diffi
 from ..optics import fibonacci as fib
 
 ## Read parameter file to obtain physical properties
 ## of molecule and plasmon, molecule and imaging system.
+from misloc_mispol_package import project_path
+
 parameter_files_path = (
     project_path + '/param'
 )
@@ -31,7 +30,7 @@ parameters = yaml.load(open(parameter_files_path+curly_yaml_file_name,'r'))
 # modules_path = project_path + '/solving_problems/modules'
 # sys.path.append(modules_path)
 
-from .calc import fitting_misLocalization as fit
+from . import fitting_misLocalization as fit
 
 ## plotting stuff
 import matplotlib.pyplot as plt
@@ -332,7 +331,8 @@ class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
             )
 
 
-def save_sim_exp_inst(sim_exp_instance, data_dir_name):
+def save_sim_exp_inst(sim_exp_instance, data_dir_name=None):
+
     path_to_data = (
         project_path
         +
@@ -340,6 +340,7 @@ def save_sim_exp_inst(sim_exp_instance, data_dir_name):
         +
         data_dir_name
         )
+
     os.mkdir( path_to_data )
 #     print(path_to_data+'/BEM_images.txt')
     np.savetxt(path_to_data+'/BEM_images.txt',sim_exp_instance.BEM_images)

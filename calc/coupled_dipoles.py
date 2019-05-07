@@ -4,11 +4,16 @@
 02/07/19:
     Updated to work in new folder structure for git, paths are now hardcoded
     and will later be set by instalation of Mislocalization package.
+
+
+Stopped updating notes when I started using git.
 """
 # import os
 # import sys
-project_path = os.path.abspath(os.path.join('..'))
+# project_path = os.path.abspath(os.path.dirname(__file__))
 # sys.path.append(project_path)
+
+from misloc_mispol_package import project_path
 
 parameter_files_path = (
     project_path + '/param'

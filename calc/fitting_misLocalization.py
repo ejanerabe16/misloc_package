@@ -55,10 +55,6 @@ import scipy.io as sio
 import scipy.special as spf
 import yaml
 
-## import diffrantion integral solver from Optics folder
-project_path = os.path.abspath(os.path.join('..'))
-
-# optics_path = project_path + '/optics'
 
 # sys.path.append(optics_path)
 from ..optics import diffraction_int as diffi
@@ -66,7 +62,9 @@ from ..optics import fibonacci as fib
 
 
 
-## Read parameter file to obtain fields
+## Read parameter file to obtain fields\
+from misloc_mispol_package import project_path
+
 parameter_files_path = (
     project_path + '/param')
 
@@ -97,7 +95,7 @@ from ..optics import anal_foc_diff_fields as afi
 ## solution to coupled dipole problem
 # modules_path = project_path + '/solving_problems/modules'
 # sys.path.append(modules_path)
-from .calc import coupled_dipoles as cp
+from . import coupled_dipoles as cp
 
 txt_file_path = project_path + '/txt'
 
@@ -971,7 +969,7 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
                 )
 
         # Calcualte images
-        self.trial_images = self.image_from_E(self.mol_E + self.plas_E )
+        self.anal_images = self.image_from_E(self.mol_E + self.plas_E )
 
         # Calculate plot domain from molecule locations
         self.default_plot_limits = [
@@ -1032,11 +1030,7 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
 
     def calculate_localization(self, save_fields=True):
         """ """
-        self.appar_cents = self.calculate_apparent_centroids(self.trial_images)
-        self.x_cen, self.y_cen = self.appar_cents
-        if save_fields == False:
-            del self.mol_E
-            del self.plas_E
+        FitModelToData.calculate_localization(self, save_fields)
 
 
     def calculate_polarization(self):
@@ -1193,7 +1187,7 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
 
     def plot_fields(self, ith_molecule):
         plt.figure(figsize=(3,3),dpi=600)
-        plt.pcolor(eye[1]/m_per_nm,eye[2]/m_per_nm,(self.trial_images[ith_molecule,:]).reshape(eye[1].shape))
+        plt.pcolor(eye[1]/m_per_nm,eye[2]/m_per_nm,(self.anal_images[ith_molecule,:]).reshape(eye[1].shape))
         plt.colorbar()
         plt.title(r'$|E|^2/|E_\mathrm{inc}|^2$')
         plt.xlabel(r'$x$ [nm]')
@@ -1424,8 +1418,20 @@ class FitModelToData(FittingTools,PlottingStuff):
 
     def calculate_localization(self, save_fields=True):
         """ """
-        self.x_gau_cen, self.y_gau_cen = self.calculate_apparent_centroids(
-            self.trial_images)
+        if hasattr(self, 'anal_images'):
+            images = self.anal_images
+        elif hasattr(self, 'BEM_images'):
+            images = self.BEM_images
+
+        self.appar_cents = self.calculate_apparent_centroids(
+            images
+            )
+        # redundant, but I'm lazy and dont want to clean dependencies.
+        self.x_gau_cen, self.y_gau_cen = self.appar_cents
+
+        if save_fields == False:
+            del self.mol_E
+            del self.plas_E
 
 
     def _better_init_loc(self, ini_x, ini_y):
@@ -1492,7 +1498,7 @@ class FitModelToData(FittingTools,PlottingStuff):
             obs_points=self.obs_points,
             for_fit=True
             )
-        raveled_model = exp_instance.trial_images[0].ravel()
+        raveled_model = exp_instance.anal_images[0].ravel()
         return raveled_model
 
     def plot_image_from_params(self, fit_params, ax=None):
@@ -1559,14 +1565,15 @@ class FitModelToData(FittingTools,PlottingStuff):
             ax = self.plot_raveled_image(self.image_data[image_idx])
             self.plot_image_from_params(self.model_fit_results[image_idx], ax)
 
-
+# Old noisy class that has depreciated. I would like to build it on top
+# of the FitModelToData class
 # class FitModelToNoisedModel(FitModelToData,PlottingStuff):
 
 #     def __init__(self, image_or_expInstance):
 #         if type(image_or_expInstance) == np.ndarray:
 #             super().__init__(image_or_expInstance)
 #         elif type(image_or_expInstance) == MolCoupNanoRodExp:
-#             super().__init__(image_or_expInstance.trial_images)
+#             super().__init__(image_or_expInstance.anal_images)
 #             self.instance_to_fit = image_or_expInstance
 
 #     def plot_image_noised(self, image, PEAK=1):
