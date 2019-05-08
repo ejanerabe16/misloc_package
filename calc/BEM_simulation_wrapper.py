@@ -190,18 +190,39 @@ class Simulation(fit.DipoleProperties):
         else: self.mol_angles = mol_angle
 
         self.default_plot_limits = [
-            np.min(self.mol_locations)-((np.max(self.mol_locations)-np.min(self.mol_locations))*.1),
-            np.max(self.mol_locations)+((np.max(self.mol_locations)-np.min(self.mol_locations))*.1)]
+            np.min(self.mol_locations)
+            -
+            (
+                (np.max(self.mol_locations)-np.min(self.mol_locations))*.1
+                ),
+            np.max(self.mol_locations)
+            +
+            (
+                (np.max(self.mol_locations)-np.min(self.mol_locations))*.1
+                )
+            ]
 
 
     def mol_too_close(self):
         '''Returns molecule locations that are outside the fluorescence quenching zone,
             defined as 10 nm from surface of fit spheroid'''
-        rotated_x = np.cos(self.rod_angle)*self.input_x_mol + np.sin(self.rod_angle)*self.input_y_mol
-        rotated_y = -np.sin(self.rod_angle)*self.input_x_mol + np.cos(self.rod_angle)*self.input_y_mol
+        rotated_x = (
+            np.cos(self.rod_angle)*self.input_x_mol
+            +
+            np.sin(self.rod_angle)*self.input_y_mol
+            )
+        rotated_y = (
+            -np.sin(self.rod_angle)*self.input_x_mol
+            +
+            np.cos(self.rod_angle)*self.input_y_mol
+            )
         long_quench_radius = self.quel_a
         short_quench_radius = self.quel_c
-        rotated_ellip_eq = rotated_x**2./long_quench_radius**2 + rotated_y**2./short_quench_radius**2
+        rotated_ellip_eq = (
+            rotated_x**2./long_quench_radius**2
+            +
+            rotated_y**2./short_quench_radius**2
+            )
         return (rotated_ellip_eq > 1)
 
     def calculate_BEM_fields(self):
@@ -213,6 +234,9 @@ class Simulation(fit.DipoleProperties):
         ## start matlab before looping
         print('starting Matlab...')
         eng = matlab.engine.start_matlab()
+
+        # Add BEM to path
+        eng.addpath(project_path + '/matlab', nargout=0)
 
         # Initialize coordinates of points on hemisphere for field BEM field
         # calculation.
@@ -256,7 +280,7 @@ class Simulation(fit.DipoleProperties):
             ]
 
             # Run BEM calculation, return fields and coords.
-            [E, sph_p] = eng.BEM_CurlyNanRod_dipDrive_E(
+            [E, sph_p] = eng.AuNR_dipDrive_E(
                 matlab.double(list(mol_location)),
                 drive_energy,
                 matlab.double(list(mol_orientation)),
