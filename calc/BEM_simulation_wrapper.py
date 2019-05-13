@@ -237,7 +237,7 @@ class Simulation(fit.DipoleProperties):
 
         # Add BEM to path
         eng.addpath(
-            eng.genpath(project_path + '/matlab', nargout=1),
+            eng.genpath(project_path+'/matlab_bem', nargout=1),
             nargout=0)
 
         # Initialize coordinates of points on hemisphere for field BEM field
@@ -329,6 +329,9 @@ class Simulation(fit.DipoleProperties):
 
             self.bem_E[i] = diffracted_E_field
             self.BEM_images[i] = diffracted_power_flux
+
+        eng.exit()
+
         return self.BEM_images
 
 
