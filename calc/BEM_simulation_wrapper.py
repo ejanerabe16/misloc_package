@@ -236,7 +236,9 @@ class Simulation(fit.DipoleProperties):
         eng = matlab.engine.start_matlab()
 
         # Add BEM to path
-        eng.addpath(project_path + '/matlab', nargout=0)
+        eng.addpath(
+            eng.genpath(project_path + '/matlab', nargout=1),
+            nargout=0)
 
         # Initialize coordinates of points on hemisphere for field BEM field
         # calculation.
