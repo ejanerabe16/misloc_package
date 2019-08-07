@@ -789,9 +789,12 @@ class CoupledDipoles(PlottingStuff, FittingTools):
         FittingTools.__init__(self, obs_points)
 
     def mb_p_fields(self, dipole_mag_array, dipole_coordinate_array):
-        ''' As of 081418,fixing: currently only treats dipole at origin.'''
+        ''' As of 081418,fixing: currently only treats dipole at origin.
+            080319: Definitely fixed that ^ at some point in the last year.
+            '''
+
         p = dipole_mag_array
-    #     print('Inside mb_p_fields, p= ',p)
+        # print('Inside mb_p_fields, p= ',p)
         bfx = dipole_coordinate_array
 
         v_rel_obs_x_pts = (self.obs_points[1].ravel()[:,None] - bfx.T[0]).T
@@ -969,7 +972,7 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
                 )
 
         # Calcualte images
-        self.anal_images = self.image_from_E(self.mol_E + self.plas_E )
+        self.anal_images = self.image_from_E(self.mol_E + self.plas_E)
 
         # Calculate plot domain from molecule locations
         self.default_plot_limits = [
@@ -1187,7 +1190,13 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
 
     def plot_fields(self, ith_molecule):
         plt.figure(figsize=(3,3),dpi=600)
-        plt.pcolor(eye[1]/m_per_nm,eye[2]/m_per_nm,(self.anal_images[ith_molecule,:]).reshape(eye[1].shape))
+        plt.pcolor(
+            eye[1]/m_per_nm,
+            eye[2]/m_per_nm,
+            (
+                self.anal_images[ith_molecule,:]
+                ).reshape(eye[1].shape)
+            )
         plt.colorbar()
         plt.title(r'$|E|^2/|E_\mathrm{inc}|^2$')
         plt.xlabel(r'$x$ [nm]')
@@ -1244,10 +1253,11 @@ class FitModelToData(FittingTools,PlottingStuff):
         ## pointer to DipoleProperties.__init__() to load emitter properties
         PlottingStuff.__init__(self,
             isolate_mode,
-            drive_energy_eV)
+            drive_energy_eV
+            )
 
-        # define quenching readii for smart initial guess. Attributes inherited
-        # from DipoleProperties
+        ## define quenching readii for smart initial guess. Attributes inherited
+        ## from DipoleProperties
         self.el_a = self.a_long_meters / m_per_nm
         self.el_c = self.a_short_meters / m_per_nm
         self.quel_a = self.el_a + self.fluo_quench_range ## define quenching region
@@ -1567,6 +1577,7 @@ class FitModelToData(FittingTools,PlottingStuff):
 
 # Old noisy class that has depreciated. I would like to build it on top
 # of the FitModelToData class
+#
 # class FitModelToNoisedModel(FitModelToData,PlottingStuff):
 
 #     def __init__(self, image_or_expInstance):

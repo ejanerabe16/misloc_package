@@ -31,7 +31,7 @@ def E_field(dipole_orientation_angle, xi, y, k):
                 np.cos( 2*(phi_P) )
                 )
             *
-            spf.spherical_jn( 1, k*rho(xi, y) )/(k*rho(xi, y))
+            np.nan_to_num(spf.spherical_jn( 1, k*rho(xi, y) )/(k*rho(xi, y)))
         +
         (
             np.sin( phi_P )**2.
@@ -48,8 +48,11 @@ def E_field(dipole_orientation_angle, xi, y, k):
         spf.spherical_jn( 2, k*rho(xi, y) )
         )
 
-
-    E_zP = -np.cos(phi_P) * spf.jv(2, k*rho(xi, y) )/(k*rho(xi, y))
+    # print("rho(xi, y) = ",rho(xi, y))
+    # print("xi, y = ",xi, ' ',y)
+    E_zP = -np.cos(phi_P) * np.nan_to_num(
+        spf.jv(2, k*rho(xi, y) )/(k*rho(xi, y))
+        )
 
 
     E_x = np.cos(psi)*E_xP - np.sin(psi)*E_yP

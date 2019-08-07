@@ -63,6 +63,7 @@ c = constants['physical_constants']['c']  # charge of electron in statcoloumbs
 hbar = constants['physical_constants']['hbar']
 nm = constants['physical_constants']['nm']
 n_a = constants['physical_constants']['nA']   # Avogadro's number
+m_per_nm = constants['physical_constants']['nm']
 # Z_o = 376.7303 # impedence of free space in ohms (SI)
 
 ## Define some useful constants from defined parameters
@@ -113,13 +114,13 @@ import traceback
 import warnings
 import sys
 
-def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
+# def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
 
-    log = file if hasattr(file,'write') else sys.stderr
-    traceback.print_stack(file=log)
-    log.write(warnings.formatwarning(message, category, filename, lineno, line))
+#     log = file if hasattr(file,'write') else sys.stderr
+#     traceback.print_stack(file=log)
+#     log.write(warnings.formatwarning(message, category, filename, lineno, line))
 
-warnings.showwarning = warn_with_traceback
+# warnings.showwarning = warn_with_traceback
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Setup warning tracker, not sure how useful this is in module...
@@ -127,9 +128,6 @@ warnings.showwarning = warn_with_traceback
 ## import matlab engine to run BEM
 import matlab
 import matlab.engine
-
-variable_dict = {'list_of_coodinates':eye[0]/nm, 'meshed_X':eye[1]/nm,'meshed_Y':eye[2]/nm}
-
 
 # Import from fit.
 # def fixed_ori_mol_placement(x_min=0, x_max=500, y_min=0, y_max=500, mol_grid_pts_1D = 3, mol_angle=0):
@@ -165,8 +163,13 @@ class Simulation(fit.DipoleProperties):
 
     ## set up inverse mapping from observed -> true angle for signle molecule in the plane.
 
-    def __init__(self, locations, mol_angle=0, plas_angle=np.pi/2
-                 ):
+    def __init__(self,
+        locations,
+        mol_angle=0,
+        plas_angle=np.pi/2,
+        obs_points=None
+        ):
+
         self.n_b = n_b ## vacuum
         self.mol_locations = locations
         self.mol_angles = mol_angle
@@ -202,6 +205,11 @@ class Simulation(fit.DipoleProperties):
                 )
             ]
 
+        if obs_points is None:
+            self.obs_points = eye
+        else:
+            self.obs_points = obs_points
+
 
     def mol_too_close(self):
         '''Returns molecule locations that are outside the fluorescence quenching zone,
@@ -224,6 +232,7 @@ class Simulation(fit.DipoleProperties):
             rotated_y**2./short_quench_radius**2
             )
         return (rotated_ellip_eq > 1)
+
 
     def calculate_BEM_fields(self):
         """ Runs BEM simulation in Matlab using parameters initialized parameters
@@ -261,9 +270,9 @@ class Simulation(fit.DipoleProperties):
         number_of_molecules = self.mol_locations.shape[0]
 
         # Initialize outputs.
-        self.BEM_images = np.zeros((number_of_molecules, eye[0].shape[0]))
+        self.BEM_images = np.zeros((number_of_molecules, self.obs_points[0].shape[0]))
         self.bem_E = np.zeros(
-            (number_of_molecules, eye[0].shape[0], 3),
+            (number_of_molecules, self.obs_points[0].shape[0], 3),
             dtype=np.complex_
             )
 
@@ -310,7 +319,7 @@ class Simulation(fit.DipoleProperties):
             diffracted_E_field = diffi.perform_integral(
                 scattered_E=BEM_scattered_E,
                 scattered_sph_coords=thetas_and_phis,
-                obser_pts=eye[0]*np.array([[1,-1]]),
+                obser_pts=self.obs_points[0]*np.array([[1,-1]]),
                 z=0,
                 obj_f=obj_f,
                 tube_f=tube_f,
@@ -336,14 +345,20 @@ class Simulation(fit.DipoleProperties):
 
 
 class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
-    """ Give BEM simulation class instance same attributes as Model Exp class for easy plotting.
+    """ Give BEM simulation class instance same attributes as Model Exp
+        class for easy plotting.
         """
     def __init__(self, locations, mol_angle=0, plas_angle=np.pi/2,
                  obs_points=None,):
 
         fit.CoupledDipoles.__init__(self, obs_points)
 
-        Simulation.__init__(self, locations, mol_angle, plas_angle)
+        Simulation.__init__(self,
+            locations,
+            mol_angle,
+            plas_angle,
+            obs_points,
+            )
 
     def plot_mispol_map_wMisloc(self,
         plot_limits=None,
@@ -358,6 +373,74 @@ class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
             plot_ellipse=False,
             **kwargs
             )
+
+    def plot_image(self, image_idx, ax=None, images=None):
+
+        if images is None:
+            image = self.BEM_images[image_idx]
+
+        if ax is None:
+            plt.figure(figsize=(3,3),dpi=600)
+            plt.pcolor(
+                self.obs_points[-2]/m_per_nm,
+                self.obs_points[-1]/m_per_nm,
+                image.reshape(self.obs_points[-2].shape),
+                )
+            plt.colorbar()
+        else:
+            ax.contour(self.obs_points[-2]/m_per_nm,
+                self.obs_points[-1]/m_per_nm,
+                image.reshape(self.obs_points[-2].shape),
+                cmap='Greys',
+                linewidths=0.5,
+                )
+        plt.title(r'$|E|^2/|E_\mathrm{inc}|^2$')
+        plt.xlabel(r'$x$ [nm]')
+        plt.ylabel(r'$y$ [nm]')
+
+        return plt.gca()
+
+    def make_image_noisy(self, PEAK=1):
+        if not hasattr(self, 'BEM_images'):
+            image = self.calculate_BEM_fields()
+        else:
+            image = self.BEM_images
+
+        if image.ndim == 2:
+            ## Assuming a set of raveled images,
+            ## Normalize each independently
+            max_for_norm = image.max(axis=1)[:,None]
+        elif image.ndim == 1:
+            max_for_norm = image.max()
+
+        normed_image = image/max_for_norm
+        noised_normded_image_data = (
+            np.random.poisson(normed_image/255.0* PEAK) / (PEAK) *255
+            )
+        noised_image_data = noised_normded_image_data*max_for_norm
+
+        return noised_image_data
+
+
+
+class NoisySimulatedExp(SimulatedExperiment):
+    """ Replicate the SimulatedExperiment class, but add noise
+        generation for experiment emulation
+        """
+
+    def __init__(self, locations, mol_angle=0, plas_angle=np.pi/2,
+                 obs_points=None,):
+
+        SimulatedExperiment.__init__(
+            self,
+            locations=locations,
+            mol_angle=mol_angle,
+            plas_angle=plas_angle,
+            obs_points=obs_points,
+            )
+
+
+
 
 
 def save_sim_exp_inst(sim_exp_instance, data_dir_name=None):
@@ -405,7 +488,7 @@ class LoadedSimExp(SimulatedExperiment):
 
 
         self.BEM_images = np.loadtxt(self.path_to_data+'/BEM_images.txt')
-        self.trial_images = np.loadtxt(self.path_to_data+'/BEM_images.txt')
+        # self.trial_images = np.loadtxt(self.path_to_data+'/BEM_images.txt')
         self.mol_locations = np.loadtxt(self.path_to_data+'/mol_locations.txt')
         self.default_plot_limits = np.loadtxt(self.path_to_data+'/default_plot_limits.txt')
         self.mol_angles = np.loadtxt(self.path_to_data+'/mol_angles.txt')
