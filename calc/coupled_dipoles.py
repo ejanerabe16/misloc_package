@@ -346,6 +346,127 @@ def short_sigma_scat_ret_pro_ellip(w, eps_inf, w_p, gamma,
 
 
 
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Adapting the retarded ellipsoid section to be nonsingular for spheres
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def sparse_ret_sphere_polarizability(
+    eps,
+    eps_b,
+    a,
+    w,
+    isolate_mode=None,
+    ):
+
+    '''Follows Moroz, A. Depolarization field of spheroidal particles,
+        J. Opt. Soc. Am. B 26, 517
+        but differs in assuming that the long axis is x oriented
+        '''
+    ### Define QS polarizability 'alphaR'
+    def alphaR_ii(i, a):
+        ''' returns components of alpha in diagonal basis with a_x denoting
+            long axis
+        '''
+
+        alpha = ((a**3.)/3) * (eps - eps_b)/(
+            eps_b + (1/3)*(eps-eps_b)
+            )
+
+        return alpha
+
+
+    ### Define retardation correction to alphaR
+    def alphaMW_ii(i, a):
+        alphaR = alphaR_ii(i, a)
+        k = w*np.sqrt(eps_b)/c
+
+        alphaMW = alphaR/(
+            1
+            -
+            (k**2./a) * alphaR
+            -
+            1j * ((2*k**3.)/3) * alphaR
+            )
+
+        return alphaMW
+
+    alpha_11 = alphaMW_ii(1, a)
+    alpha_22 = alphaMW_ii(2, a)
+    alpha_33 = alphaMW_ii(3, a)
+
+    if isolate_mode == None:
+        alpha_ij = np.array([[ alpha_11,       0.,       0.],
+                             [       0., alpha_22,       0.],
+                             [       0.,       0., alpha_33]])
+    elif isolate_mode == 'long':
+        alpha_ij = np.array([[ alpha_11,       0.,       0.],
+                             [       0.,       0.,       0.],
+                             [       0.,       0.,       0.]])
+    elif (isolate_mode == 'short') or (isolate_mode == 'trans'):
+        alpha_ij = np.array([[       0.,       0.,       0.],
+                             [       0., alpha_22,       0.],
+                             [       0.,       0., alpha_33]])
+
+    return alpha_ij
+
+
+
+def sparse_ret_sphere_polarizability_Drude(w, eps_inf, w_p, gamma,
+    eps_b, a, isolate_mode=None):
+    ''' '''
+    return sparse_ret_sphere_polarizability(
+       drude_model(w, eps_inf, w_p, gamma),
+       eps_b,
+       a,
+       w,
+       isolate_mode,
+       )
+
+
+def sigma_scat_ret_sphere(w, eps_inf, w_p, gamma,
+    eps_b, a):
+    ''''''
+    alpha = sparse_ret_sphere_polarizability_Drude(
+        w, eps_inf, w_p, gamma, eps_b, a)
+
+    ## result I had as of 02/19/19, don't remember justification
+    # sigma = (8*np.pi/3)*(w/c)**4.*np.sqrt(eps_b)**(-1)*(
+    #     np.abs(alpha[0,0])**2.
+    #     )
+
+    ## simple fix, changing k -> w*n/c
+    sigma = sigma_prefactor(w, eps_b) * (
+        np.abs(alpha[0,0])**2.
+        )
+    return sigma
+
+# def short_sigma_scat_ret_sphere(w, eps_inf, w_p, gamma,
+#     eps_b, a_x, a_yz):
+#     ''''''
+#     alpha = sparse_ret_sphere_polarizability_Drude(
+#         w, eps_inf, w_p, gamma, eps_b, a_x, a_yz)
+
+#     ## result I had as of 02/19/19, don't remember justification
+#     # sigma = (8*np.pi/3)*(w/c)**4.*np.sqrt(eps_b)**(-1)*(
+#     #     np.abs(alpha[1,1])**2.
+#     #     )
+
+#     ## simple fix, changing k -> w*n/c
+#     sigma = sigma_prefactor(w, eps_b) * (
+#         np.abs(alpha[1,1])**2.
+#         )
+#     # print('(8*np.pi/3)*(w/c)**4. = ',(8*np.pi/3)*(w/c)**4. )
+#     # print('(np.abs(alpha[0,0])**2. + np.abs(alpha[1,1])**2.) = ',
+#         # (np.abs(alpha[0,0])**2. + np.abs(alpha[1,1])**2.))
+#     return sigma
+
+###################
+
+
+
+
+
+
 
 
 

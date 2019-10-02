@@ -62,7 +62,7 @@ from ..optics import fibonacci as fib
 
 
 
-## Read parameter file to obtain fields\
+## Read parameter file to obtain fields
 from misloc_mispol_package import project_path
 
 parameter_files_path = (
@@ -789,8 +789,22 @@ class CoupledDipoles(PlottingStuff, FittingTools):
         FittingTools.__init__(self, obs_points)
 
     def mb_p_fields(self, dipole_mag_array, dipole_coordinate_array):
-        ''' As of 081418,fixing: currently only treats dipole at origin.
-            080319: Definitely fixed that ^ at some point in the last year.
+        ''' Evaluates analytic form of focused+diffracted dipole fields
+            anlong observation grid given
+
+            Args
+            ----
+                dipole_mag_array: array of dipole moment vecotrs
+                    with shape ~(n dipoles, 3 cartesean components)
+                dipole_coordinate_array: same shape structure but
+                    the locations of the dipoles.
+
+            Returns
+            -------
+                Fields with shape ~ (3, ?...)
+
+
+
             '''
 
         p = dipole_mag_array
@@ -848,6 +862,16 @@ class CoupledDipoles(PlottingStuff, FittingTools):
 
 
     def dipole_fields(self, locations, mol_angle=0, plas_angle=np.pi/2):
+        """ Calculate image fields of coupled plasmon and molecule
+            dipole.
+
+            Args
+            ----
+
+
+            Returns
+            -------
+            """
         d = locations*m_per_nm
         p0, p1 = cp.dipole_mags_gened(
             mol_angle,
@@ -1655,7 +1679,14 @@ class FitModelToData(FittingTools,PlottingStuff):
 # In[89]:
 
 def fixed_ori_mol_placement(
-    x_min=0, x_max=350, y_min=0, y_max=350, mol_grid_pts_1D = 10, mol_angle=0):
+    x_min=0,
+    x_max=350,
+    y_min=0,
+    y_max=350,
+    mol_grid_pts_1D = 10,
+    mol_angle=0
+    ):
+
     locations = diffi.observation_points(
         x_min, x_max, y_min, y_max, points=mol_grid_pts_1D
         )[0]

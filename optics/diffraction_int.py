@@ -109,11 +109,16 @@ def generate_integrand(
             tube_f
             )
 
+    ## Scalar prefactor
+    ## ---------------_
+    ## s = -i k e^{i k f_tube} / (2 π f_obj)
+    ##
+    ## Has units of k / f ~ (length)^-2
     s_prefactor = -1j*k*np.exp(1j*k*tube_f)/(2*np.pi*obj_f)
 
-
-
-
+    ## Vector prefactor
+    ## ----------------
+    ## no units
     v_prefactor_denom = (
         (tube_f/obj_f)**2.-np.sin(alpha_sca)**2.
         )**0.5
@@ -124,20 +129,18 @@ def generate_integrand(
     v_prefactor = np.cos(alpha_sca)/v_prefactor_denom_no_sing
     v_prefactor[np.where(v_prefactor_denom==0)] = 1
 
-
-
-
-
+    ## Complex exponential
+    ## -------------------
+    ## no units
     c_exp = np.exp(
         1j*k*(
             rho*np.sin(alpha_ref)*np.cos(beta_ref-phi)
-            + z*np.cos(alpha_ref)
+            +
+            z*np.cos(alpha_ref)
             )
         )
 
-
-
-
+    ## units of 1/l^2
     integrand = s_prefactor*v_prefactor*refracted_E*c_exp
 
     return integrand
@@ -150,7 +153,8 @@ def perform_integral(
         obj_f,
         tube_f,
         k,
-        alpha_1_max):
+        alpha_1_max,
+        ):
 
     integrand = generate_integrand(
         scattered_E,
@@ -162,11 +166,14 @@ def perform_integral(
         k
         )
 
+    ## Define differential area element
+    ## --------------------------------
     number_of_lens_points = scattered_sph_coords.shape[0]
+    ## Area element has units of f^2 ~ length
     lens_surface_area = obj_f**2. * 2*np.pi * (1-np.cos(alpha_1_max))
     area_per_point = lens_surface_area/number_of_lens_points
 
     weighted_terms_for_sum = area_per_point*integrand
-    result_of_integral = np.sum(weighted_terms_for_sum,axis=2)
+    result_of_integral = np.sum(weighted_terms_for_sum, axis=2)
 
     return result_of_integral
