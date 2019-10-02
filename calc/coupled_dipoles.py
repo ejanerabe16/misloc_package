@@ -87,7 +87,7 @@ def fluorophore_mass(ext_coef, gamma):
     return m
 
 ## Define polarizabilities in diagonal frames
-def sparse_polarizability_tensor(mass, w_res, w, gamma_nr, a, eps_inf, ebs_b):
+def sparse_polarizability_tensor(mass, w_res, w, gamma_nr, a, eps_inf, eps_b):
     '''Define diagonal polarizability with single cartesien component derived
         from Drude model > Clausius-mosati.
         Assumes physical constants definded; e, c
@@ -187,10 +187,24 @@ def sigma_scat_spheroid(w, eps_inf, w_p, gamma,
 
 ################### retarded ellipsoid from Kong's notes
 
-def sparse_ret_prolate_spheroid_polarizability(eps, eps_b, a_x, a_yz, w, isolate_mode=None):
+def sparse_ret_prolate_spheroid_polarizability(
+    eps,
+    eps_b,
+    a_x,
+    a_yz,
+    w,
+    isolate_mode=None):
     '''Follows Moroz, A. Depolarization field of spheroidal particles,
         J. Opt. Soc. Am. B 26, 517
         but differs in assuming that the long axis is x oriented
+        for the prolate spheroid (a_x < a_yz).
+
+        'isolate_mode' takes args
+            'long' : just x axis for prolate sphereoid (a_x > a_yz) or
+                x and y axes for oblate spheroid (a_x < a_yz)
+            'short' : y and x axes for prolate sphereoid (a_x > a_yz) or
+                just z axis for oblate spheroid (a_x < a_yz)
+
         '''
     ### Define QS polarizability 'alphaR'
     def alphaR_ii(i, a_x, a_yz):
@@ -210,7 +224,13 @@ def sparse_ret_prolate_spheroid_polarizability(eps, eps_b, a_x, a_yz, w, isolate
         ''' '''
         def L_x(a_x, a_yz):
             e = ecc(a_x, a_yz)
-            L = (1-e**2.)/e**3. * (-e + np.arctanh(e))
+
+            if a_x > a_yz:
+                ## Use prolate result
+                L = (1-e**2.)/e**3. * (-e + np.arctanh(e))
+            elif a_x < a_yz:
+                ## Use oblate spheroid result
+                L = (1/e**2.)*(1- (np.sqrt(1-e**2.)/e)*np.arcsin(e))
             # print('L = ',L)
             return L
 
@@ -226,7 +246,7 @@ def sparse_ret_prolate_spheroid_polarizability(eps, eps_b, a_x, a_yz, w, isolate
         return L
 
     def ecc(a_x, a_yz):
-        return np.sqrt((a_x**2. - a_yz**2.)/a_x**2.)
+        return np.sqrt(np.abs(a_x**2. - a_yz**2.)/max([a_x, a_yz])**2.)
 
     ### Define retardation correction to alphaR
     def alphaMW_ii(i, a_x, a_yz):
@@ -245,41 +265,79 @@ def sparse_ret_prolate_spheroid_polarizability(eps, eps_b, a_x, a_yz, w, isolate
             - (k**2./l_E) * D * alphaR
             - 1j * ((2*k**3.)/3) * alphaR
             )
-
+        # print(f"alphaMW = {alphaMW}")
         return alphaMW
 
     ### Define dynamic geometric factors 'D_i' for alphaMW
     def D_x(a_x, a_yz):
         e = ecc(a_x, a_yz)
-        D = 3/4 * (
-            ((1+e**2.)/(1-e**2.))*L_i(1, a_x, a_yz) + 1
-            )
+        if a_x > a_yz:
+            ## Use prolate result
+            D = 3/4 * (
+                ((1+e**2.)/(1-e**2.))*L_i(1, a_x, a_yz) + 1
+                )
+        elif a_x < a_yz:
+            ## Use oblate result
+            D = 3/4 * ((1-2*e**2.)*L_i(1, a_x, a_yz) + 1)
         return D
 
     def D_yz(a_x, a_yz):
         e = ecc(a_x, a_yz)
         # print('e in D = ',e)
-        D = (a_yz/(2*a_x))*(3/e * np.arctanh(e) - D_x(a_x,a_yz))
+        if a_x > a_yz:
+            D = (a_yz/(2*a_x))*(3/e * np.arctanh(e) - D_x(a_x,a_yz))
+        elif a_x < a_yz:
+            D = (a_yz/(2*a_x))*(
+                3*np.sqrt(1-e**2.)/e * np.arcsin(e) - D_x(a_x,a_yz))
         # print('D = ',D)
         return D
 
-    alpha_11 = alphaMW_ii(1, a_x, a_yz)
-    alpha_22 = alphaMW_ii(2, a_x, a_yz)
-    alpha_33 = alphaMW_ii(3, a_x, a_yz)
+    if a_x > a_yz:
+        ## For prolate spheroid, assign long axis to be x
+        alpha_11 = alphaMW_ii(1, a_x, a_yz)
+        alpha_22 = alphaMW_ii(2, a_x, a_yz)
+        alpha_33 = alphaMW_ii(3, a_x, a_yz)
+    elif a_x < a_yz:
+        ## For oblate spheroid, assign short axis to be z
+        alpha_11 = alphaMW_ii(2, a_x, a_yz)
+        alpha_22 = alphaMW_ii(2, a_x, a_yz)
+        alpha_33 = alphaMW_ii(1, a_x, a_yz)
 
     if isolate_mode == None:
         alpha_ij = np.array([[ alpha_11,       0.,       0.],
                              [       0., alpha_22,       0.],
                              [       0.,       0., alpha_33]])
-    elif isolate_mode == 'long':
-        alpha_ij = np.array([[ alpha_11,       0.,       0.],
-                             [       0.,       0.,       0.],
-                             [       0.,       0.,       0.]])
-    elif (isolate_mode == 'short') or (isolate_mode == 'trans'):
-        alpha_ij = np.array([[       0.,       0.,       0.],
-                             [       0., alpha_22,       0.],
-                             [       0.,       0., alpha_33]])
 
+    elif isolate_mode == 'long':
+        if a_x > a_yz:
+            ## Keep only alpha_x for prolate
+            alpha_ij = np.array([
+                [ alpha_11,       0.,       0.],
+                [       0.,       0.,       0.],
+                [       0.,       0.,       0.]
+                ])
+        elif a_x < a_yz:
+            ## Keep alpha_x and #alpha_y for oblate
+            alpha_ij = np.array([
+                [ alpha_11,       0.,       0.],
+                [       0., alpha_22,       0.],
+                [       0.,       0.,       0.]
+                ])
+    elif (isolate_mode == 'short') or (isolate_mode == 'trans'):
+        if a_x > a_yz:
+            alpha_ij = np.array([
+                [       0.,       0.,       0.],
+                [       0., alpha_22,       0.],
+                [       0.,       0., alpha_33]
+                ])
+        elif a_x < a_yz:
+            alpha_ij = np.array([
+                [       0.,       0.,       0.],
+                [       0.,       0.,       0.],
+                [       0.,       0., alpha_33]
+                ])
+
+    # print(f"The output variable is {alpha_ij}.")
     return alpha_ij
 
 
@@ -643,7 +701,7 @@ def uncoupled_p0(
         gamma_nr=parameters['fluorophore']['test_gamma']/hbar,
         a=0,
         eps_inf=1,
-        ebs_b=1)
+        eps_b=1)
     alpha_0 = rotation_by(-phi_0) @ alpha_0_p0 @ rotation_by(phi_0)
 
     p0_unc = np.einsum('...ij,...j->...i',alpha_0, E_drive)
@@ -681,7 +739,7 @@ def uncoupled_p0(
 #         gamma_nr=parameters['plasmon']['fit_hbar_gamma']/hbar,
 #         a = parameters['plasmon']['radius'],
 #         eps_inf=parameters['plasmon']['eps_inf'],
-#         ebs_b=eps_b)
+#         eps_b=eps_b)
 #     alpha_1 = rotation_by(-phi_1) @ alpha_1_p1 @ rotation_by(phi_1)
 
 #     p1_unc = np.einsum('...ij,...j->...i',alpha_1, E_drive)
