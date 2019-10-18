@@ -17,7 +17,10 @@ k0 = 2 * pi / enei;
 exc = potential( obj.dip, p, enei );
 
 %  find particle positions connected to layer structure
-ind1 = any( bsxfun( @eq, p.expand( p.inout( :, 2 ) ) .', obj.layer.ind ), 2 );
+% ind1 = any( bsxfun( @eq, p.expand( p.inout( :, 2 ) ) .', obj.layer.ind ), 2 );
+% removed the ".'" that seems to be a bug? at leasts it stops the demos
+% from running. 
+ind1 = any( bsxfun( @eq, p.expand( p.inout( :, 2 ) ), obj.layer.ind ), 2 );
 %  positions of particle surface where potential is computed
 pos1 = p.pos( ind1, : );
 

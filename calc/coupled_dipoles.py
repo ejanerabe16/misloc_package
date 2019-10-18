@@ -98,9 +98,14 @@ def sparse_polarizability_tensor(mass, w_res, w, gamma_nr, a, eps_inf, eps_b):
     # print('alpha_0_xx_static = ',alpha_0_xx_static)
     alpha_0_xx = alpha_0_xx_osc + alpha_0_xx_static
 
-    alpha_0_ij = np.array([[alpha_0_xx, 0, 0],
-                           [0,          0, 0],
-                           [0,          0, 0]])
+    if type(alpha_0_xx) is np.ndarray and alpha_0_xx.size > 1:
+        alpha_0_xx = alpha_0_xx[..., None, None]
+
+    alpha_0_ij = alpha_0_xx * np.array([
+        [1, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+        ])
 
     return alpha_0_ij
 
@@ -554,7 +559,10 @@ def dipole_mags_gened(
     alpha1_diag=None,
     ):
     """ Calculate dipole magnitudes with generalized dyadic
-        polarizabilities
+        polarizabilities.
+
+        Returns dipole moment vecotrs as rows in array of shape
+        (# of seperations, 3).
         """
 
     # Initialize unit vector for molecule dipole in lab frame
@@ -631,8 +639,16 @@ def G(drive_hbar_w, d_col):
     k = w * n_b / c
 
     dyad = np.einsum('...i,...j->...ij',n_hat,n_hat)
+    print(f'dyad.shape = {dyad.shape}')
 
-    d = d[...,None]
+    ## If 1 seperation is given, check if multable frequencies given for spectrum
+    print(f'd.size = {d.size}')
+    if d.size is not 1:
+        d = d[...,None]
+    elif d.size is 1 and (type(k) is np.ndarray):
+        if k.size > 1:
+            k = k.reshape(((k.size,)+(dyad.ndim-1)*(1,)))
+
     complex_phase_factor = np.exp(1j*k*d)
 
     ## add all piences together to calculate coupling
@@ -745,6 +761,95 @@ def uncoupled_p0(
 #     p1_unc = np.einsum('...ij,...j->...i',alpha_1, E_drive)
 
 #     return [p1_unc]
+
+
+
+
+
+
+
+
+
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Scattering spectrum of coupled dipoles
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+def sigma_scat_coupled(
+    dipoles_moments_per_omega,
+    d_col,
+    drive_hbar_w,
+    n_b=1,
+    E_0=1,
+    ):
+    """ Scattering spectrum of two coupled dipoles p_0 and p_1. Derived from
+        Draine's prescription of the DDA.
+        """
+
+    omega = drive_hbar_w/hbar
+    k = omega * n_b / c
+
+    p_0, p_1 = dipoles_moments_per_omega(omega)
+
+    print(f'p_0, p_1 = {p_0, p_1}')
+
+    G_d = G(drive_hbar_w, d_col)
+
+
+    sigma = (
+        (4 * np.pi * k  / np.abs(E_0)**2.)
+        *
+        (
+            (
+                np.imag(
+                    np.linalg.norm(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)), axis=1)
+                    )
+                +
+                np.imag(
+                    np.linalg.norm(p_1 * np.conj(np.einsum('...ij,...j->...i', G_d, p_0)), axis=1)
+                    )
+                +
+                (2 / 3) * k**3 * (
+                    np.abs(np.linalg.norm( p_0, axis=1 ))**2. ## Compute norm "along" columns
+                    +
+                    np.abs(np.linalg.norm( p_1, axis=1 ))**2.
+                    )
+                )
+            )
+        )
+
+    return sigma
+
+def dipole_moments_per_omega(
+    mol_angle,
+    plas_angle,
+    d,
+    E_d_angle=None,
+    drive_hbar_w=parameters['general']['drive_energy'],
+    alpha0_diag_of_omega=None,
+    alpha1_diag_of_omega=None,
+    ):
+
+    d_col = np.asarray(d).reshape((1, 3))
+
+    alpha0_diag = alpha0_diag_of_omega(drive_hbar_w/hbar)
+    alpha1_diag = alpha1_diag_of_omega(drive_hbar_w/hbar)
+
+    p_0, p_1 = dipole_mags_gened(mol_angle,
+        plas_angle,
+        d_col,
+        # E_d_angle=None,
+        drive_hbar_w=drive_hbar_w,
+        alpha0_diag=alpha0_diag,
+        alpha1_diag=alpha1_diag,
+        )
+
+    return p_0, p_1
+
+
 
 
 if __name__ == "__main__":

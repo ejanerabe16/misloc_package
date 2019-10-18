@@ -167,8 +167,11 @@ class Simulation(fit.DipoleProperties):
         locations,
         mol_angle=0,
         plas_angle=np.pi/2,
-        obs_points=None
+        obs_points=None,
+        simulation_type='disk'
         ):
+
+        self.simulation_type = simulation_type
 
         self.n_b = n_b ## vacuum
         self.mol_locations = locations
@@ -249,6 +252,11 @@ class Simulation(fit.DipoleProperties):
             eng.genpath(project_path+'/matlab_bem', nargout=1),
             nargout=0)
 
+        if self.simulation_type == 'disk':
+            mnpbem_sim_fun = eng.BEM_CurlyDisk_dipDrive_E
+        elif self.simulation_type == 'rod':
+            mnpbem_sim_fun = eng.AuNR_dipDrive_E
+
         # Initialize coordinates of points on hemisphere for field BEM field
         # calculation.
         sphere_points = fib.fib_alg_k_filter(
@@ -270,7 +278,9 @@ class Simulation(fit.DipoleProperties):
         number_of_molecules = self.mol_locations.shape[0]
 
         # Initialize outputs.
-        self.BEM_images = np.zeros((number_of_molecules, self.obs_points[0].shape[0]))
+        self.BEM_images = np.zeros(
+            (number_of_molecules, self.obs_points[0].shape[0])
+            )
         self.bem_E = np.zeros(
             (number_of_molecules, self.obs_points[0].shape[0], 3),
             dtype=np.complex_
@@ -281,7 +291,7 @@ class Simulation(fit.DipoleProperties):
             print('{}th molecule'.format(int(i+1)))
             mol_location = self.mol_locations[i]
             if np.atleast_1d(self.mol_angles).shape[0] == self.mol_locations.shape[0]:
-                mol_angle = self.mol_angles[i]
+                mol_angle = np.atleast_1d(self.mol_angles)[i]
             elif np.atleast_1d(self.mol_angles).shape[0] == 1:
                 mol_angle = self.mol_angles
             mol_orientation = [
@@ -290,8 +300,20 @@ class Simulation(fit.DipoleProperties):
                 0.,
             ]
 
+
+            # print(f"\nmol_location input to BEM function:\n",
+            #     mol_location
+            #     )
+            # print(f"\nmol_orientation input to BEM function:\n",
+            #     mol_orientation
+            #     )
+            # print(f"\nmatlab_cart_points_on_sph input to BEM function:\n",
+            #     matlab_cart_points_on_sph
+            #     )
+
+            self.matlab_cart_points_on_sph = matlab_cart_points_on_sph
             # Run BEM calculation, return fields and coords.
-            [E, sph_p] = eng.AuNR_dipDrive_E(
+            [E, sph_p] = mnpbem_sim_fun(
                 matlab.double(list(mol_location)),
                 drive_energy,
                 matlab.double(list(mol_orientation)),
@@ -300,8 +322,8 @@ class Simulation(fit.DipoleProperties):
                 nargout=2)
 
             # Format outputs for np
-            BEM_scattered_E = np.asarray(E)
-                # print('BEM_scattered_E.shape = ',BEM_scattered_E.shape)
+            self.BEM_scattered_E = np.asarray(E)
+                # print('self.BEM_scattered_E.shape = ',self.BEM_scattered_E.shape)
                 # BEM_scattered_H = np.asarray(H)
                 # print('BEM_scattered_H.shape = ',BEM_scattered_H.shape)
             cart_sphere_points = np.asarray(sph_p)
@@ -317,7 +339,7 @@ class Simulation(fit.DipoleProperties):
             # Calculate focused+diffracted fields
             print('calculating diffracted fields')
             diffracted_E_field = diffi.perform_integral(
-                scattered_E=BEM_scattered_E,
+                scattered_E=self.BEM_scattered_E,
                 scattered_sph_coords=thetas_and_phis,
                 obser_pts=self.obs_points[0]*np.array([[1,-1]]),
                 z=0,
@@ -348,8 +370,13 @@ class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
     """ Give BEM simulation class instance same attributes as Model Exp
         class for easy plotting.
         """
-    def __init__(self, locations, mol_angle=0, plas_angle=np.pi/2,
-                 obs_points=None,):
+    def __init__(self,
+        locations,
+        mol_angle=0,
+        plas_angle=np.pi/2,
+        obs_points=None,
+        simulation_type='disk'
+        ):
 
         fit.CoupledDipoles.__init__(self, obs_points)
 
@@ -358,6 +385,7 @@ class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
             mol_angle,
             plas_angle,
             obs_points,
+            simulation_type=simulation_type
             )
 
     def plot_mispol_map_wMisloc(self,
@@ -428,8 +456,14 @@ class NoisySimulatedExp(SimulatedExperiment):
         generation for experiment emulation
         """
 
-    def __init__(self, locations, mol_angle=0, plas_angle=np.pi/2,
-                 obs_points=None,):
+    def __init__(self,
+        locations,
+        mol_angle=0,
+        plas_angle=np.pi/2,
+        obs_points=None,
+        simulation_type='disk',
+        ):
+
 
         SimulatedExperiment.__init__(
             self,
@@ -437,10 +471,8 @@ class NoisySimulatedExp(SimulatedExperiment):
             mol_angle=mol_angle,
             plas_angle=plas_angle,
             obs_points=obs_points,
+            simulation_type=simulation_type
             )
-
-
-
 
 
 def save_sim_exp_inst(sim_exp_instance, data_dir_name=None):

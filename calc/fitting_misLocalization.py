@@ -216,7 +216,7 @@ class DipoleProperties(object):
             gamma_nr=fluo_nr_hbar_gamma/hbar, # parameters['fluorophore']['test_gamma']/hbar,
             a=0,
             eps_inf=1,
-            ebs_b=1
+            eps_b=1
             )
 
         self.alpha1_diag_dyad = (
