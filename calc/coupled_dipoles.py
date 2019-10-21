@@ -446,9 +446,9 @@ def sparse_ret_sphere_polarizability(
         alphaMW = alphaR/(
             1
             -
-            (k**2./a) * alphaR
+            ((k**2./a) * alphaR)
             -
-            1j * ((2*k**3.)/3) * alphaR
+            (1j * ((2*k**3.)/3) * alphaR)
             )
 
         return alphaMW
@@ -457,18 +457,57 @@ def sparse_ret_sphere_polarizability(
     alpha_22 = alphaMW_ii(2, a)
     alpha_33 = alphaMW_ii(3, a)
 
+    ## Reorganize matrix dimensions if multiple frequencies given
+    if type(alpha_11) is np.ndarray and alpha_11.size > 1:
+        alpha_11 = alpha_11[..., None, None]
+    if type(alpha_22) is np.ndarray and alpha_22.size > 1:
+        alpha_22 = alpha_22[..., None, None]
+    if type(alpha_33) is np.ndarray and alpha_33.size > 1:
+        alpha_33 = alpha_33[..., None, None]
+
+
     if isolate_mode == None:
-        alpha_ij = np.array([[ alpha_11,       0.,       0.],
-                             [       0., alpha_22,       0.],
-                             [       0.,       0., alpha_33]])
+        alpha_ij = (
+            alpha_11 * np.array([
+                [1.,0.,0.],
+                [0.,0.,0.],
+                [0.,0.,0.]
+                ])
+            +
+            alpha_22 * np.array([
+                [0.,0.,0.],
+                [0.,1.,0.],
+                [0.,0.,0.]
+                ])
+            +
+            alpha_33 * np.array([
+                [0.,0.,0.],
+                [0.,0.,0.],
+                [0.,0.,1.]
+                ])
+            )
     elif isolate_mode == 'long':
-        alpha_ij = np.array([[ alpha_11,       0.,       0.],
-                             [       0.,       0.,       0.],
-                             [       0.,       0.,       0.]])
+        alpha_ij = (
+            alpha_11 * np.array([
+                [1.,0.,0.],
+                [0.,0.,0.],
+                [0.,0.,0.]
+                ])
+            )
     elif (isolate_mode == 'short') or (isolate_mode == 'trans'):
-        alpha_ij = np.array([[       0.,       0.,       0.],
-                             [       0., alpha_22,       0.],
-                             [       0.,       0., alpha_33]])
+        alpha_ij = (
+            alpha_22 * np.array([
+                [0.,0.,0.],
+                [0.,1.,0.],
+                [0.,0.,0.]
+                ])
+            +
+            alpha_33 * np.array([
+                [0.,0.,0.],
+                [0.,0.,0.],
+                [0.,0.,1.]
+                ])
+            )
 
     return alpha_ij
 
@@ -499,7 +538,7 @@ def sigma_scat_ret_sphere(w, eps_inf, w_p, gamma,
 
     ## simple fix, changing k -> w*n/c
     sigma = sigma_prefactor(w, eps_b) * (
-        np.abs(alpha[0,0])**2.
+        np.abs(alpha[...,0,0])**2.
         )
     return sigma
 
@@ -639,10 +678,10 @@ def G(drive_hbar_w, d_col):
     k = w * n_b / c
 
     dyad = np.einsum('...i,...j->...ij',n_hat,n_hat)
-    print(f'dyad.shape = {dyad.shape}')
+    # print(f'dyad.shape = {dyad.shape}')
 
     ## If 1 seperation is given, check if multable frequencies given for spectrum
-    print(f'd.size = {d.size}')
+    # print(f'd.size = {d.size}')
     if d.size is not 1:
         d = d[...,None]
     elif d.size is 1 and (type(k) is np.ndarray):
@@ -794,34 +833,41 @@ def sigma_scat_coupled(
 
     p_0, p_1 = dipoles_moments_per_omega(omega)
 
-    print(f'p_0, p_1 = {p_0, p_1}')
+    # print(f'p_0, p_1 = {p_0, p_1}')
 
     G_d = G(drive_hbar_w, d_col)
 
+
+    interference_term = np.sum((
+        np.imag(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)))
+        +
+        np.imag(p_1 * np.conj(np.einsum('...ij,...j->...i', G_d, p_0)))
+        ), axis=1)
+    diag_term_0 = (2 / 3) * k**3 * np.abs(np.linalg.norm( p_0, axis=1 ))**2.
+    diag_term_1 = (2 / 3) * k**3 * np.abs(np.linalg.norm( p_1, axis=1 ))**2.
 
     sigma = (
         (4 * np.pi * k  / np.abs(E_0)**2.)
         *
         (
-            (
-                np.imag(
-                    np.linalg.norm(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)), axis=1)
-                    )
-                +
-                np.imag(
-                    np.linalg.norm(p_1 * np.conj(np.einsum('...ij,...j->...i', G_d, p_0)), axis=1)
-                    )
-                +
-                (2 / 3) * k**3 * (
-                    np.abs(np.linalg.norm( p_0, axis=1 ))**2. ## Compute norm "along" columns
-                    +
-                    np.abs(np.linalg.norm( p_1, axis=1 ))**2.
-                    )
-                )
+            interference_term
+            +
+            diag_term_0
+            +
+            diag_term_1
             )
         )
+    # print(f'max(G) = {G_d.max()}')
+    # print(f'k**3 = {np.max(k**3)}')
+    # print(f"G dot p max{np.conj(np.einsum('...ij,...j->...i', G_d, p_1)).max()}")
+    # print(f"p dot g dot p max{np.linalg.norm(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)), axis=1).max()}")
+    # print(f"p dot g dot p min{np.linalg.norm(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)), axis=1).min()}")
+    # print(f'p_0= {p_0}')
+    # print(p dot g dot p norm)
 
-    return sigma
+    return [sigma, np.array(
+        [interference_term, diag_term_0, diag_term_1,]
+        )*(4 * np.pi * k  / np.abs(E_0)**2.)]
 
 def dipole_moments_per_omega(
     mol_angle,
