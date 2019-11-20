@@ -158,6 +158,7 @@ class Simulation(fit.DipoleProperties):
         calculate_BEM_fields: runs simulatins and stores results in attributes;
             bem_E: Focused and diffracted electric field
             BEM_images:
+            Check method docstring for availible BEM simulation options.
 
     """
 
@@ -238,12 +239,21 @@ class Simulation(fit.DipoleProperties):
 
 
     def calculate_BEM_fields(self):
-        """ Runs BEM simulation in Matlab using parameters initialized parameters
+        """ Runs BEM simulation in Matlab using parameters initialized
+            parameters.
+
+            Current options for BEM simulations are
+            selected by the class instance variable 'simulation_type';
+                - 'disk' : disk with layer substrate, BROKEN.
+                - 'bare_disk_JC' : Gold disk in water, JC data.
+                - 'bare_disk_Drude' : Gold disk in water, Drude model.
+                    built in to BEM.
+rod
             """
         if hasattr(self, 'BEM_images'):
             return self.BEM_images
 
-        ## start matlab before looping
+        ## start background matlab instance before looping through images.
         print('starting Matlab...')
         eng = matlab.engine.start_matlab()
 
@@ -254,6 +264,14 @@ class Simulation(fit.DipoleProperties):
 
         if self.simulation_type == 'disk':
             mnpbem_sim_fun = eng.BEM_CurlyDisk_dipDrive_E
+        elif self.simulation_type == 'bare_disk_JC':
+            ## Just disk in water, included in package files.
+            ## File reads JC data built in to BEM currently.
+            mnpbem_sim_fun = eng.CurlyDiskJC_NoSub_dipDrive_E
+        elif self.simulation_type == 'bare_disk_Drude':
+            ## Just disk in water, included in package files.
+            ## File reads JC data built in to BEM currently.
+            mnpbem_sim_fun = eng.CurlyDiskDrudeNoSub_dipDrive_E
         elif self.simulation_type == 'rod':
             mnpbem_sim_fun = eng.AuNR_dipDrive_E
 
@@ -369,6 +387,13 @@ class Simulation(fit.DipoleProperties):
 class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
     """ Give BEM simulation class instance same attributes as Model Exp
         class for easy plotting.
+
+        Current options for BEM simulations are
+        selected by the class instance variable 'simulation_type';
+            - 'disk' : disk with layer substrate, BROKEN.
+            - 'bare_disk_JC' : Gold disk in water, JC data.
+            - 'bare_disk_Drude' : Gold disk in water, Drude model.
+                built in to BEM.
         """
     def __init__(self,
         locations,
@@ -522,10 +547,12 @@ class LoadedSimExp(SimulatedExperiment):
         self.BEM_images = np.loadtxt(self.path_to_data+'/BEM_images.txt')
         # self.trial_images = np.loadtxt(self.path_to_data+'/BEM_images.txt')
         self.mol_locations = np.loadtxt(self.path_to_data+'/mol_locations.txt')
-        self.default_plot_limits = np.loadtxt(self.path_to_data+'/default_plot_limits.txt')
+        self.default_plot_limits = np.loadtxt(
+            self.path_to_data+'/default_plot_limits.txt')
         self.mol_angles = np.loadtxt(self.path_to_data+'/mol_angles.txt')
 #         self.angles = self.mol_angles
-        self.rod_angle = np.atleast_1d(np.loadtxt(self.path_to_data+'/rod_angle.txt'))[0]
+        self.rod_angle = np.atleast_1d(
+            np.loadtxt(self.path_to_data+'/rod_angle.txt'))[0]
 
         obs_points_0 = np.loadtxt(self.path_to_data+'/obs_points[0].txt')
         obs_points_1 = np.loadtxt(self.path_to_data+'/obs_points[1].txt')
@@ -546,7 +573,8 @@ def save_fit_inst(fit_instance, exp_instance, data_dir_name):
         )
     os.mkdir( path_to_data )
 
-    np.savetxt(path_to_data+'/model_fit_results.txt',fit_instance.model_fit_results)
+    np.savetxt(
+        path_to_data+'/model_fit_results.txt',fit_instance.model_fit_results)
 
     # Directory for exp instance
 #     os.mkdir( path_to_data+'/exp_instance' )
@@ -737,7 +765,9 @@ def fig5(
     # rotate right colorbar label
     paper_axs[3].set_ylabel(None)
     # paper_axs[3].yaxis.set_label_position("right")
-    paper_axs[3].set_ylabel(r'Model fit molecule polarization [$\Delta^\circ$]',rotation=270,va="bottom")
+    paper_axs[3].set_ylabel(
+        r'Model fit molecule polarization [$\Delta^\circ$]',
+        rotation=270,va="bottom")
 
     for cbar_ax in [paper_axs[3],paper_axs[0]]:
     #     cbar_ax.yaxis.set_ticks(np.linspace(0,np.pi/2,10))

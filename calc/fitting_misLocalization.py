@@ -431,7 +431,8 @@ class PlottingStuff(DipoleProperties):
         else:
             ax.plot([x1,x2],[y1,y2],'k-', linewidth=.3, zorder=zorder)
 
-    def scatter_centroids_wLine(self, x_mol_loc, y_mol_loc, appar_cents, ax=None):
+    def scatter_centroids_wLine(
+        self, x_mol_loc, y_mol_loc, appar_cents, ax=None):
 
         x, y = appar_cents
 
