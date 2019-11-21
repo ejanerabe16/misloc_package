@@ -69,7 +69,7 @@ parameter_files_path = (
     project_path + '/param')
 
 curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
-parameters = yaml.load(
+default_parameters = yaml.load(
     open(parameter_files_path+curly_yaml_file_name, 'r')
     )
 # print('reading parameters from {}'.format(
@@ -115,8 +115,8 @@ n_a = constants['physical_constants']['nA']   # Avogadro's number
 
 ## STOPPED HERE 02/21/19 5:00 PM. Removing parameters dependance
 ## System background
-n_b = parameters['general']['background_ref_index']
-eps_b = n_b**2.
+# n_b = default_parameters['general']['background_ref_index']
+# eps_b = n_b**2.
 
 
 # a = parameters['plasmon']['radius']
@@ -126,41 +126,10 @@ eps_b = n_b**2.
 
 #######################################################################
 ## Optics stuff.
+## USED in class 'BeamSplitter'
 sensor_size = parameters['optics']['sensor_size']*m_per_nm
 # height = 2*mm  # also defines objective lens focal length
-# height = parameters['optics']['obj_f_len']
-resolution = parameters['optics']['sensor_pts']  # image grid resolution
-## Build image sensor
-eye = diffi.observation_points(
-    x_min= -sensor_size/2,
-    x_max= sensor_size/2,
-    y_min= -sensor_size/2,
-    y_max= sensor_size/2,
-    points= resolution
-    )
-
-## Experimental parameters
-magnification = parameters['optics']['magnification']
-numerical_aperture = parameters['optics']['numerical_aperture']
-max_theta = np.arcsin(numerical_aperture) # defines physical aperture size
-
-## numerical parameters for calculation of scattered field
-lens_points = parameters['optics']['lens_points']
-
-# obj_f = 1.*mm  # still dont know what this is supposed to be
-obj_f = parameters['optics']['obj_f_len']
-
-tube_f = magnification * obj_f
-
-## calculate dipole magnitudes
-
-# drive_hbar_omega = parameters['general']['drive_energy']
-    ## rod long mode max at 1.8578957289256757 eV
-# omega_drive = drive_hbar_omega/hbar  # driving frequency
-
-
-
-
+# height = parameters['optics']['obj_f_len']]
 
 class DipoleProperties(object):
     """ Will eventually call parameter file as argument, currently (02/07/19)
@@ -266,7 +235,10 @@ class BeamSplitter(object):
 
 class FittingTools(object):
 
-    def __init__(self, obs_points=None):
+    def __init__(self,
+        obs_points=None,
+        resolution=None,
+        param_file=None):
         """
         Args:
             obs_points: 3 element list (in legacy format of eye),
@@ -276,12 +248,32 @@ class FittingTools(object):
                 obs_points[1]: meshed X array
                 obs_points[2]: meshed Y array
         """
+
         if obs_points is None:
-            self.obs_points = eye
+            ## Check for given resolution
+            if resolution is None and param_file is not None:
+                ## Load resolution from parameter file
+                parameters = yaml.load(
+                    open(parameter_files_path+param_file, 'r')
+                    )
+                # image grid resolution
+                resolution = parameters['optics']['sensor_pts']
+            elif resolution is None and param_file is None:
+                raise ValueError(
+                    "Must provide 'obs_points', 'resolution'"+
+                    " or 'param_file' argument")
+            ## Build image sensor.
+            ## USED in class 'FittingTools' and 'MolCoupNanoRodExp' as defaults obs points
+            default_obs_points = diffi.observation_points(
+                x_min= -sensor_size/2,
+                x_max= sensor_size/2,
+                y_min= -sensor_size/2,
+                y_max= sensor_size/2,
+                points= resolution
+                )
+            self.obs_points = default_obs_points
         else:
             self.obs_points = obs_points
-
-
 
     def twoD_Gaussian(self,
         X, ## tuple of meshed (x,y) values
