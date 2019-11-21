@@ -68,10 +68,10 @@ from misloc_mispol_package import project_path
 parameter_files_path = (
     project_path + '/param')
 
-curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
-default_parameters = yaml.load(
-    open(parameter_files_path+curly_yaml_file_name, 'r')
-    )
+# curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
+# default_parameters = yaml.load(
+#     open(parameter_files_path+curly_yaml_file_name, 'r')
+#     )
 # print('reading parameters from {}'.format(
 #     parameter_files_path+curly_yaml_file_name
 #     )
@@ -125,57 +125,73 @@ n_a = constants['physical_constants']['nA']   # Avogadro's number
 
 
 #######################################################################
-## Optics stuff.
-## USED in class 'BeamSplitter'
-sensor_size = parameters['optics']['sensor_size']*m_per_nm
+
 # height = 2*mm  # also defines objective lens focal length
 # height = parameters['optics']['obj_f_len']]
 
 class DipoleProperties(object):
     """ Will eventually call parameter file as argument, currently (02/07/19)
         just loads relevant values from hardcoded paths. ew.
+
+        11/21/19: Rewriting to take parameter file as input.
         """
 
 
     def __init__(self,
-        eps_inf=parameters['plasmon']['fit_eps_inf'],
-        hbar_omega_plasma=parameters['plasmon']['fit_hbar_wp'],
-        hbar_gamma_drude=parameters['plasmon']['fit_hbar_gamma'],
-        a_long_in_nm=parameters['plasmon']['fit_a1'],
-        a_short_in_nm=parameters['plasmon']['fit_a2'],
-        eps_b=parameters['general']['background_ref_index']**2.0,
-        fluo_ext_coef=parameters['fluorophore']['extinction_coeff'],
-        fluo_mass_hbar_gamma=parameters['fluorophore']['mass_gamma'],
-        fluo_nr_hbar_gamma=parameters['fluorophore']['test_gamma'],
+        param_file=None,
+        eps_inf=None,
+        hbar_omega_plasma=None,
+        hbar_gamma_drude=None,
+        a_long_in_nm=None,
+        a_short_in_nm=None,
+        eps_b=None,
+        fluo_ext_coef=None,
+        fluo_mass_hbar_gamma=None,
+        fluo_nr_hbar_gamma=None,
         fluo_quench_region_nm=10,
         isolate_mode=None,
-        drive_energy_eV=parameters['general']['drive_energy'],
+        drive_energy_eV=None,
         ):
 
-        self.drive_energy_eV = drive_energy_eV
-        self.eps_inf = eps_inf
-        self.omega_plasma = hbar_omega_plasma / hbar
-        self.gamma_drude = hbar_gamma_drude / hbar
-        self.a_long_meters = a_long_in_nm * m_per_nm
-        self.a_short_meters = a_short_in_nm * m_per_nm
-
-        # self.fit_result_params = [
-        #     ## eps_inf, hbar*omega_p, hbar*gamma_nr, eps_b
-        #     ## (not used as fit param), a_x, a_yz
-        #     eps_inf, # parameters['plasmon']['fit_eps_inf'],
-        #     hbar_omega_plasma / hbar, # parameters['plasmon']['fit_hbar_wp']/hbar,
-        #     hbar_gamma_drude / hbar,# parameters['plasmon']['fit_hbar_gamma']/hbar,
-        #     a_long_in_nm * m_per_nm, # parameters['plasmon']['fit_a1']*m_per_nm,
-        #     a_short_in_nm * m_per_nm, # parameters['plasmon']['fit_a2']*m_per_nm
-        #     ]
-
-        self.eps_b = eps_b
-
-        ## hardcoded region around nanoparticle to through out results because
-        ## dipole approximation at small proximities
-        self.fluo_quench_range = fluo_quench_region_nm
+        ## If parameter file is given, load all relevent parameters.
+        if param_file is not None:
+            self.parameters = yaml.load(
+                open(parameter_files_path+param_file, 'r')
+                    )
+            ## Define all parameters as instance attributes.
+            self.drive_energy_eV = parameters['general']['drive_energy']
+            self.eps_inf = parameters['plasmon']['fit_eps_inf']
+            self.omega_plasma = parameters['plasmon']['fit_hbar_wp'] / hbar
+            self.gamma_drude = parameters['plasmon']['fit_hbar_gamma'] / hbar
+            self.a_long_meters = parameters['plasmon']['fit_a1'] * m_per_nm
+            self.a_short_meters = parameters['plasmon']['fit_a2'] * m_per_nm
+            try:## loading frmo parameter file, not previously implemented
+                ## before 11/21/19.
+                self.fluo_quench_range = parameters['plasmon']['quench_radius']
+            except:## Load default kwarg
+                self.fluo_quench_range = fluo_quench_region_nm
+            ## And some that will only get used in creation of the molecule
+            ## polarizabity, and therefore don't need to be instance
+            ## attributes.
+            fluo_ext_coef = parameters['fluorophore']['extinction_coeff']
+            fluo_mass_hbar_gamma = parameters['fluorophore']['mass_gamma']
+            fluo_nr_hbar_gamma = parameters['fluorophore']['test_gamma']
+        ## If no parameter file is given, assume all variables are given.
+        else:## Assume all parameters given explixitly as class args.
+            self.drive_energy_eV = drive_energy_eV
+            self.eps_inf = eps_inf
+            self.omega_plasma = hbar_omega_plasma / hbar
+            self.gamma_drude = hbar_gamma_drude / hbar
+            self.a_long_meters = a_long_in_nm * m_per_nm
+            self.a_short_meters = a_short_in_nm * m_per_nm
+            self.eps_b = eps_b
+            ## hardcoded region around nanoparticle to through out results because
+            ## dipole approximation at small proximities
+            self.fluo_quench_range = fluo_quench_region_nm
 
         self.alpha0_diag_dyad = cp.sparse_polarizability_tensor(
+            ## This one is a little hacky, will need to fix for proper
+            ## spectral reshaping later.
             mass=cp.fluorophore_mass(
                 ext_coef=fluo_ext_coef, # parameters['fluorophore']['extinction_coeff'],
                 gamma=fluo_mass_hbar_gamma/hbar, # parameters['fluorophore']['mass_gamma']/hbar
@@ -202,12 +218,27 @@ class DipoleProperties(object):
 
 
 class BeamSplitter(object):
+    """ Class for calculating average image polarization as Curly does
+        experimentally
+        """
 
-    def __init__(self):
-        pass
+    def __init__(self, param_file=None):
+        if param_file is None:
+            ## Load default
+            # parameters = yaml.load(
+            #     open(parameter_files_path+curly_yaml_file_name, 'r')
+            #     )
+            raise ValueError('Default parameter file has not been implemented'+
+                ' because it seems like a recipe for mistakes')
+        else:
+            ## Load given parameter file.
+            self.parameters = yaml.load(
+                        open(parameter_files_path+param_file, 'r')
+                        )
+        sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
 
     def powers_and_angels(self,E):
-        drive_I = np.abs(parameters['general']['drive_amp'])**2.
+        drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
 
         normed_Ix = np.abs(E[0])**2. / drive_I
         normed_Iy = np.abs(E[1])**2. / drive_I
@@ -220,7 +251,7 @@ class BeamSplitter(object):
         return [angles, Px_per_drive_I, Py_per_drive_I]
 
     def powers_and_angels_no_interf(self,E1,E2):
-        drive_I = np.abs(parameters['general']['drive_amp'])**2.
+        drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
 
         normed_Ix = (np.abs(E1[0])**2. + np.abs(E2[0])**2.) / drive_I
         normed_Iy = (np.abs(E1[1])**2. + np.abs(E2[1])**2.) / drive_I
@@ -237,7 +268,6 @@ class FittingTools(object):
 
     def __init__(self,
         obs_points=None,
-        resolution=None,
         param_file=None):
         """
         Args:
@@ -251,28 +281,34 @@ class FittingTools(object):
 
         if obs_points is None:
             ## Check for given resolution
-            if resolution is None and param_file is not None:
+            if param_file is not None:
                 ## Load resolution from parameter file
-                parameters = yaml.load(
+                self.parameters = yaml.load(
                     open(parameter_files_path+param_file, 'r')
                     )
                 # image grid resolution
-                resolution = parameters['optics']['sensor_pts']
-            elif resolution is None and param_file is None:
+                resolution = self.parameters['optics']['sensor_pts']
+                sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
+
+                obs_points = diffi.observation_points(
+                    x_min= -sensor_size/2,
+                    x_max= sensor_size/2,
+                    y_min= -sensor_size/2,
+                    y_max= sensor_size/2,
+                    points= resolution
+                    )
+
+            elif param_file is None:
                 raise ValueError(
-                    "Must provide 'obs_points', 'resolution'"+
-                    " or 'param_file' argument")
-            ## Build image sensor.
-            ## USED in class 'FittingTools' and 'MolCoupNanoRodExp' as defaults obs points
-            default_obs_points = diffi.observation_points(
-                x_min= -sensor_size/2,
-                x_max= sensor_size/2,
-                y_min= -sensor_size/2,
-                y_max= sensor_size/2,
-                points= resolution
-                )
-            self.obs_points = default_obs_points
+                    "Must provide 'obs_points'"+
+                    " or 'param_file' argument"
+                    )
+            else:
+                raise ValueError('Something unexpected happened')
+
+            self.obs_points = obs_points
         else:
+            ## store given
             self.obs_points = obs_points
 
     def twoD_Gaussian(self,
@@ -361,7 +397,7 @@ class FittingTools(object):
         return apparent_centroids_xy.T  ## returns [x_cen(s), y_cen(s)]
 
     def image_from_E(self, E):
-        drive_I = np.abs(parameters['general']['drive_amp'])**2.
+        drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
 
         normed_I = np.sum(np.abs(E)**2.,axis=0) / drive_I
 
@@ -404,15 +440,18 @@ class PlottingStuff(DipoleProperties):
 
     def __init__(self,
         isolate_mode=None,
-        drive_energy_eV=parameters['general']['drive_energy'],
+        drive_energy_eV=None,
         ):
         """ Establish dipole properties as atributes for reference in plotting
             functions.
             """
+        ## If given drive drive_energy_eV, store as instance variable
+        if drive_energy_eV is not None:
+            self.drive_energy_eV = drive_energy_eV
 
         DipoleProperties.__init__(self,
             isolate_mode=isolate_mode,
-            drive_energy_eV=drive_energy_eV,
+            drive_energy_eV=self.drive_energy_eV,
             )
 
     def connectpoints(self, cen_x, cen_y, mol_x, mol_y, p, ax=None, zorder=1):
