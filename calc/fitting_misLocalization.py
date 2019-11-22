@@ -165,6 +165,7 @@ class DipoleProperties(object):
             self.gamma_drude = parameters['plasmon']['fit_hbar_gamma'] / hbar
             self.a_long_meters = parameters['plasmon']['fit_a1'] * m_per_nm
             self.a_short_meters = parameters['plasmon']['fit_a2'] * m_per_nm
+            self.eps_b = eps_b
             try:## loading frmo parameter file, not previously implemented
                 ## before 11/21/19.
                 self.fluo_quench_range = parameters['plasmon']['quench_radius']
@@ -210,7 +211,7 @@ class DipoleProperties(object):
                 self.eps_inf,
                 self.omega_plasma,
                 self.gamma_drude,
-                eps_b,
+                self.eps_b,
                 self.a_long_meters,
                 self.a_short_meters,
                 isolate_mode=isolate_mode)
@@ -403,7 +404,8 @@ class FittingTools(object):
 
         return normed_I
 
-class PlottingStuff(DipoleProperties):
+
+class PlottingStuff(object):
 
     # Custom colormap to match Curly's, followed tutorial at
     # https://matplotlib.org/gallery/color/custom_cmap.html#sphx-glr-gallery-color-custom-cmap-py
@@ -439,20 +441,30 @@ class PlottingStuff(DipoleProperties):
     a_shade_of_green = [0/255, 219/255, 1/255]
 
     def __init__(self,
-        isolate_mode=None,
-        drive_energy_eV=None,
+        param_file
         ):
         """ Establish dipole properties as atributes for reference in plotting
             functions.
-            """
-        ## If given drive drive_energy_eV, store as instance variable
-        if drive_energy_eV is not None:
-            self.drive_energy_eV = drive_energy_eV
 
-        DipoleProperties.__init__(self,
-            isolate_mode=isolate_mode,
-            drive_energy_eV=self.drive_energy_eV,
-            )
+            11/21/19: Taking out lineage to DipoleProperties, because it wasnt
+            neccesary and confusing down the line
+            """
+        ## Load nanoparticle radii from parameter file
+        parameters = yaml.load(
+                open(parameter_files_path+param_file, 'r')
+                    )
+        self.a_long_meters = parameters['plasmon']['fit_a1'] * m_per_nm
+        self.a_short_meters = parameters['plasmon']['fit_a2'] * m_per_nm
+
+        ## Define geometry of NP in plot/focal plane
+        self.el_c = self.a_short_meters / m_per_nm
+        ## Determine if disk or rod
+        if self.a_long_meters > self.a_short_meters:
+            ## Assume rod, so unique radius is in plane
+            self.el_a = self.a_long_meters / m_per_nm
+        elif self.a_long_meters <= self.a_short_meters:
+            ## Assume disk, so unique radius is out of plot plane
+            self.el_a = self.a_short_meters / m_per_nm
 
     def connectpoints(self, cen_x, cen_y, mol_x, mol_y, p, ax=None, zorder=1):
         x1, x2 = mol_x[p], cen_x[p]
@@ -525,8 +537,7 @@ class PlottingStuff(DipoleProperties):
         plot_ellipse=True,
         cbar_ax=None,
         cbar_label_str=None,
-        draw_quadrant=True,
-        ):
+        draw_quadrant=True,):
 
         # For main quiver, plot relative mispolarization if true angle is given
         if true_mol_angle is None:
@@ -534,17 +545,7 @@ class PlottingStuff(DipoleProperties):
         elif true_mol_angle is not None:
             diff_angles = np.abs(angles - true_mol_angle)
 
-        self.el_a = self.a_long_meters / m_per_nm
-        self.el_c = self.a_short_meters / m_per_nm
-
-        # self.fluo_quench_range
-
-        # quel_a = el_a + self.fluo_quench_range
-        # quel_c = el_c + self.fluo_quench_range
         pt_is_in_ellip = np.ones(x_plot.shape, dtype=bool)
-    #     for i in np.arange(x_plot.shape[0]):
-    #         if (x_plot[i]**2./quel_a**2. +  y_plot[i]**2./quel_c**2.) < 1:
-    #             pt_is_in_ellip[i] = False
 
         x_plot = x_plot[pt_is_in_ellip]
         y_plot = y_plot[pt_is_in_ellip]
@@ -799,26 +800,29 @@ class PlottingStuff(DipoleProperties):
         return misloc
 
 
-class CoupledDipoles(PlottingStuff, FittingTools):
+class CoupledDipoles(DipoleProperties, PlottingStuff, FittingTools):
 
-    ## Q: do I need to manually call 'PlottingStuff.__init__'?
-    def __init__(self,
-        obs_points=None,
-        isolate_mode=None,
-        drive_energy_eV=parameters['general']['drive_energy'],
-        ):
-        """
-        PlottingStuff.__init__(): Really just calls DipoleProperties.__init__()
-            which initializes polarizabilities and maybe some other stuff
+    def __init__(self, **kwawrgs):
+        """ Container for methods which perform coupled dipole dynamics
+            calculations contained in 'coupled_dipoles' module as well
+            as field calculations.
 
-        FittingTools.__init__(obs_points): defines obs points or assigns
-            default
-         """
-        PlottingStuff.__init__(self,
-            isolate_mode=isolate_mode,
-            drive_energy_eV=drive_energy_eV,
-            )
-        FittingTools.__init__(self, obs_points)
+            Inherits initialization from;
+                DipoleProperties: define dipole properties from
+                    parameter file or given as arguments and
+                    store as instance attributes.
+                PlottingStuff: Not sure what this is used for here, I
+                    know it defines the quenching zone as class
+                    attrubtes.
+                FittingTools: Initialized 'obs_points' as instance
+                    attribute.
+            """
+        DipoleProperties.__init__(self, **kwargs)
+        ## Get plotting methods
+        PlottingStuff.__init__(self, **kwargs)
+        ## Send obs_points or param_file to FittingTools
+        FittingTools.__init__(self, **kwargs)
+        ## Regardless, will establish self.obs_points
 
     def mb_p_fields(self, dipole_mag_array, dipole_coordinate_array):
         ''' Evaluates analytic form of focused+diffracted dipole fields
@@ -834,9 +838,6 @@ class CoupledDipoles(PlottingStuff, FittingTools):
             Returns
             -------
                 Fields with shape ~ (3, ?...)
-
-
-
             '''
 
         p = dipole_mag_array
@@ -937,16 +938,17 @@ class CoupledDipoles(PlottingStuff, FittingTools):
                 dipole_mag_array=p0_unc,
                 dipole_coordinate_array=d
                 )
-        elif (type(mol_angle) == int or
-              type(mol_angle) == float or
-              type(mol_angle) == np.float64 or
-              (type(mol_angle) == np.ndarray and mol_angle.shape[0]==1)
-              ):
+        elif (
+            type(mol_angle) == int or
+            type(mol_angle) == float or
+            type(mol_angle) == np.float64 or
+            (type(mol_angle) == np.ndarray and mol_angle.shape[0]==1)
+            ):
             p0_unc_E = self.mb_p_fields(
                 dipole_mag_array=p0_unc[None,:],
                 dipole_coordinate_array=d,
                 )
-#         print(type(mol_angle))
+        # print(type(mol_angle))
         return [mol_E, plas_E, p0_unc_E, p0, p1]
 
 
@@ -954,12 +956,12 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
     ''' Collect focused+diffracted far-field information from molecules
         nearby a nanorod.
         '''
-
-    ## set up inverse mapping from observed -> true angle for signle molecule in the plane.
+    ## set up inverse mapping from observed -> true angle for signle molecule
+    ## in the plane.
     saved_mapping = np.loadtxt(txt_file_path+'/obs_pol_vs_true_angle.txt')
-    true_ord_angles, obs_ord_angles =  saved_mapping.T
+    true_ord_angles, obs_ord_angles = saved_mapping.T
     #from scipy import interpolate
-    f = interpolate.interp1d(true_ord_angles,obs_ord_angles)
+    f = interpolate.interp1d(true_ord_angles, obs_ord_angles)
     f_inv = interpolate.interp1d(
         obs_ord_angles[:251],
         true_ord_angles[:251],
@@ -972,20 +974,14 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
         locations,
         mol_angle=0,
         plas_angle=np.pi/2,
-        obs_points=None,
         for_fit=False,
-        isolate_mode=None,
-        drive_energy_eV=None,
         exclude_interference=False,
+        **kwargs
         ):
 
-        if drive_energy_eV is None:
-            drive_energy_eV = parameters['general']['drive_energy']
-
+        ## Send param_file or specified dipole params to
         CoupledDipoles.__init__(self,
-            obs_points,
-            isolate_mode,
-            drive_energy_eV,
+            **kwargs
             )
 
         # Set up instance attributes
@@ -995,9 +991,13 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
         self.rod_angle = plas_angle
 
         # Filter out molecules in region of fluorescence quenching
-        self.el_a = self.a_long_meters / m_per_nm
-        self.el_c = self.a_short_meters / m_per_nm
-        self.quel_a = self.el_a + self.fluo_quench_range ## define quenching region
+        # self.el_a and self.el_c are now defined inside PlottingTools
+        # __init__().
+        # self.el_a = self.a_long_meters / m_per_nm
+        # self.el_c = self.a_short_meters / m_per_nm
+        #
+        # define quenching region
+        self.quel_a = self.el_a + self.fluo_quench_range
         self.quel_c = self.el_c + self.fluo_quench_range
         self.input_x_mol = locations[:,0]
         self.input_y_mol = locations[:,1]
@@ -1039,7 +1039,8 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
                     (
                         np.max(self.mol_locations)
                         -
-                        np.min(self.mol_locations))*.1
+                        np.min(self.mol_locations)
+                        )*.1
                     )
                 ),
             (
@@ -1049,7 +1050,8 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
                     (
                         np.max(self.mol_locations)
                         -
-                        np.min(self.mol_locations))*.1
+                        np.min(self.mol_locations)
+                        )*.1
                     )
                 ),
             ]
@@ -1257,9 +1259,9 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
         plt.title(r'$|E|^2/|E_\mathrm{inc}|^2$')
         plt.xlabel(r'$x$ [nm]')
         plt.ylabel(r'$y$ [nm]')
-#         plt.quiver(self.mol_locations[ith_molecule, 0], self.mol_locations[ith_molecule, 1],
-#                    np.cos(self.mol_angles[ith_molecule]),np.sin(self.mol_angles[ith_molecule]),
-#                    color='white',pivot='middle')
+        # plt.quiver(self.mol_locations[ith_molecule, 0], self.mol_locations[ith_molecule, 1],
+                   # np.cos(self.mol_angles[ith_molecule]),np.sin(self.mol_angles[ith_molecule]),
+                   # color='white',pivot='middle')
         return plt.gca()
 
 
@@ -1279,21 +1281,23 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
 
         # save nanorod angle
 
-class FitModelToData(FittingTools,PlottingStuff):
+
+class FitModelToData(CoupledDipoles):
     ''' Class to contain fitting functions that act on class 'MolCoupNanoRodExp'
     as well as variables that are needed by 'MolCoupNanoRodExp'
+
+    Takes any kwargs that get sent to DipoleProperties.
     '''
     def __init__(self,
         image_data,
-        obs_points=None,
         ini_guess=None,
-        isolate_mode=None,
-        drive_energy_eV=parameters['general']['drive_energy'],
         rod_angle=None,
+        **kwargs
         ):
 
         self.mol_angles=0
 
+        ## Rod angle is a given, for a disk this doesnt matter
         if rod_angle is None:
             self.rod_angle = np.pi/2
         else:
@@ -1304,19 +1308,21 @@ class FitModelToData(FittingTools,PlottingStuff):
         # This should really be moved to the fit method...
         self.ini_guess = ini_guess
 
-        FittingTools.__init__(self, obs_points)
-
-        ## pointer to DipoleProperties.__init__() to load emitter properties
-        PlottingStuff.__init__(self,
-            isolate_mode,
-            drive_energy_eV
-            )
+        ## Replaced the calls tpo these three class __init__s with just
+        ## a call to CoupledDipoles.__init__() on 11/21/19. Not sure if
+        ## it works yet.
+        # DipoleProperties.__init__(self, **kwargs)
+        # FittingTools.__init__(self, obs_points, **kwargs)
+        # ## pointer to DipoleProperties.__init__() to load emitter properties
+        # PlottingStuff.__init__(self, isolate_mode, **kwargs)
+        CoupledDipoles.__init__(self, **kwargs)
 
         ## define quenching readii for smart initial guess. Attributes inherited
         ## from DipoleProperties
-        self.el_a = self.a_long_meters / m_per_nm
-        self.el_c = self.a_short_meters / m_per_nm
-        self.quel_a = self.el_a + self.fluo_quench_range ## define quenching region
+        # self.el_a = self.a_long_meters / m_per_nm
+        # self.el_c = self.a_short_meters / m_per_nm
+        ## define quenching region
+        self.quel_a = self.el_a + self.fluo_quench_range
         self.quel_c = self.el_c + self.fluo_quench_range
 
     def fit_model_to_image_data(self,
@@ -1333,8 +1339,8 @@ class FitModelToData(FittingTools,PlottingStuff):
         num_of_images = images.shape[0]
         self.model_fit_results = np.zeros((num_of_images,3))
 
-        ## If going to use positions of max intensity as initial guess for molecule
-        ## position, calculate positions
+        ## If going to use positions of max intensity as initial guess for
+        ## molecule position, calculate positions
         if self.ini_guess is None:
             max_positions = self.calculate_max_xy(images)
 
