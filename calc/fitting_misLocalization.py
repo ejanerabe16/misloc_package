@@ -61,7 +61,6 @@ from ..optics import diffraction_int as diffi
 from ..optics import fibonacci as fib
 
 
-
 ## Read parameter file to obtain fields
 from misloc_mispol_package import project_path
 
@@ -159,24 +158,25 @@ class DipoleProperties(object):
                 open(parameter_files_path+param_file, 'r')
                     )
             ## Define all parameters as instance attributes.
-            self.drive_energy_eV = parameters['general']['drive_energy']
-            self.eps_inf = parameters['plasmon']['fit_eps_inf']
-            self.omega_plasma = parameters['plasmon']['fit_hbar_wp'] / hbar
-            self.gamma_drude = parameters['plasmon']['fit_hbar_gamma'] / hbar
-            self.a_long_meters = parameters['plasmon']['fit_a1'] * m_per_nm
-            self.a_short_meters = parameters['plasmon']['fit_a2'] * m_per_nm
-            self.eps_b = eps_b
+            self.drive_energy_eV = self.parameters['general']['drive_energy']
+            self.eps_inf = self.parameters['plasmon']['fit_eps_inf']
+            self.omega_plasma = self.parameters['plasmon']['fit_hbar_wp'] / hbar
+            self.gamma_drude = self.parameters['plasmon']['fit_hbar_gamma'] / hbar
+            self.a_long_meters = self.parameters['plasmon']['fit_a1'] * m_per_nm
+            self.a_short_meters = self.parameters['plasmon']['fit_a2'] * m_per_nm
+            n_b = self.parameters['general']['background_ref_index']
+            self.eps_b = n_b**2.
             try:## loading frmo parameter file, not previously implemented
                 ## before 11/21/19.
-                self.fluo_quench_range = parameters['plasmon']['quench_radius']
+                self.fluo_quench_range = self.parameters['plasmon']['quench_radius']
             except:## Load default kwarg
                 self.fluo_quench_range = fluo_quench_region_nm
             ## And some that will only get used in creation of the molecule
             ## polarizabity, and therefore don't need to be instance
             ## attributes.
-            fluo_ext_coef = parameters['fluorophore']['extinction_coeff']
-            fluo_mass_hbar_gamma = parameters['fluorophore']['mass_gamma']
-            fluo_nr_hbar_gamma = parameters['fluorophore']['test_gamma']
+            fluo_ext_coef = self.parameters['fluorophore']['extinction_coeff']
+            fluo_mass_hbar_gamma = self.parameters['fluorophore']['mass_gamma']
+            fluo_nr_hbar_gamma = self.parameters['fluorophore']['test_gamma']
         ## If no parameter file is given, assume all variables are given.
         else:## Assume all parameters given explixitly as class args.
             self.drive_energy_eV = drive_energy_eV
@@ -190,6 +190,33 @@ class DipoleProperties(object):
             ## dipole approximation at small proximities
             self.fluo_quench_range = fluo_quench_region_nm
 
+            ## Make sure no values were missed
+            relevant_attr = [
+                self.drive_energy_eV,
+                self.eps_inf,
+                self.omega_plasma,
+                self.gamma_drude,
+                self.a_long_meters,
+                self.a_short_meters,
+                self.eps_b,
+                self.fluo_quench_range
+                ]
+            relevant_attr_names = [
+                'self.drive_energy_eV',
+                'self.eps_inf',
+                'self.omega_plasma',
+                'self.gamma_drude',
+                'self.a_long_meters',
+                'self.a_short_meters',
+                'self.eps_b',
+                'self.fluo_quench_range'
+                ]
+            if None in relevant_attr:
+                raise ValueError(
+                    'Need all attributes with manual input.\n',
+                    f'missing {relevant_attr_names[relevant_attr.index(None)]}'
+                    )
+
         self.alpha0_diag_dyad = cp.sparse_polarizability_tensor(
             ## This one is a little hacky, will need to fix for proper
             ## spectral reshaping later.
@@ -197,8 +224,8 @@ class DipoleProperties(object):
                 ext_coef=fluo_ext_coef, # parameters['fluorophore']['extinction_coeff'],
                 gamma=fluo_mass_hbar_gamma/hbar, # parameters['fluorophore']['mass_gamma']/hbar
                 ),
-            w_res=drive_energy_eV/hbar,
-            w=drive_energy_eV/hbar,
+            w_res=self.drive_energy_eV/hbar,
+            w=self.drive_energy_eV/hbar,
             gamma_nr=fluo_nr_hbar_gamma/hbar, # parameters['fluorophore']['test_gamma']/hbar,
             a=0,
             eps_inf=1,
@@ -207,7 +234,7 @@ class DipoleProperties(object):
 
         self.alpha1_diag_dyad = (
             cp.sparse_ret_prolate_spheroid_polarizability_Drude(
-                drive_energy_eV/hbar,
+                self.drive_energy_eV/hbar,
                 self.eps_inf,
                 self.omega_plasma,
                 self.gamma_drude,
@@ -236,7 +263,7 @@ class BeamSplitter(object):
             self.parameters = yaml.load(
                         open(parameter_files_path+param_file, 'r')
                         )
-        sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
+        self.sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
 
     def powers_and_angels(self,E):
         drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
@@ -244,8 +271,8 @@ class BeamSplitter(object):
         normed_Ix = np.abs(E[0])**2. / drive_I
         normed_Iy = np.abs(E[1])**2. / drive_I
 
-        Px_per_drive_I = np.sum(normed_Ix,axis=-1) / sensor_size**2.
-        Py_per_drive_I = np.sum(normed_Iy,axis=-1) / sensor_size**2.
+        Px_per_drive_I = np.sum(normed_Ix,axis=-1) / self.sensor_size**2.
+        Py_per_drive_I = np.sum(normed_Iy,axis=-1) / self.sensor_size**2.
 
 
         angles = np.arctan(Py_per_drive_I**0.5/Px_per_drive_I**0.5)
@@ -257,8 +284,8 @@ class BeamSplitter(object):
         normed_Ix = (np.abs(E1[0])**2. + np.abs(E2[0])**2.) / drive_I
         normed_Iy = (np.abs(E1[1])**2. + np.abs(E2[1])**2.) / drive_I
 
-        Px_per_drive_I = np.sum(normed_Ix,axis=-1) / sensor_size**2.
-        Py_per_drive_I = np.sum(normed_Iy,axis=-1) / sensor_size**2.
+        Px_per_drive_I = np.sum(normed_Ix,axis=-1) / self.sensor_size**2.
+        Py_per_drive_I = np.sum(normed_Iy,axis=-1) / self.sensor_size**2.
 
 
         angles = np.arctan(Py_per_drive_I**0.5/Px_per_drive_I**0.5)
@@ -289,13 +316,13 @@ class FittingTools(object):
                     )
                 # image grid resolution
                 resolution = self.parameters['optics']['sensor_pts']
-                sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
+                self.sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
 
                 obs_points = diffi.observation_points(
-                    x_min= -sensor_size/2,
-                    x_max= sensor_size/2,
-                    y_min= -sensor_size/2,
-                    y_max= sensor_size/2,
+                    x_min= -self.sensor_size/2,
+                    x_max= self.sensor_size/2,
+                    y_min= -self.sensor_size/2,
+                    y_max= self.sensor_size/2,
                     points= resolution
                     )
 
@@ -802,7 +829,7 @@ class PlottingStuff(object):
 
 class CoupledDipoles(DipoleProperties, PlottingStuff, FittingTools):
 
-    def __init__(self, **kwawrgs):
+    def __init__(self, **kwargs):
         """ Container for methods which perform coupled dipole dynamics
             calculations contained in 'coupled_dipoles' module as well
             as field calculations.
@@ -1249,11 +1276,11 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
     def plot_fields(self, ith_molecule):
         plt.figure(figsize=(3,3),dpi=600)
         plt.pcolor(
-            eye[1]/m_per_nm,
-            eye[2]/m_per_nm,
+            self.obs_points[1]/m_per_nm,
+            self.obs_points[2]/m_per_nm,
             (
                 self.anal_images[ith_molecule,:]
-                ).reshape(eye[1].shape)
+                ).reshape(self.obs_points[1].shape)
             )
         plt.colorbar()
         plt.title(r'$|E|^2/|E_\mathrm{inc}|^2$')
@@ -1576,9 +1603,9 @@ class FitModelToData(CoupledDipoles):
     def plot_image_from_params(self, fit_params, ax=None):
         raveled_image = self.raveled_model_of_params(fit_params)
         self.plot_raveled_image(raveled_image,ax)
-#         plt.quiver(self.mol_locations[ith_molecule, 0], self.mol_locations[ith_molecule, 1],
-#                    np.cos(self.mol_angles[ith_molecule]),np.sin(self.mol_angles[ith_molecule]),
-#                    color='white',pivot='middle')
+        # plt.quiver(self.mol_locations[ith_molecule, 0], self.mol_locations[ith_molecule, 1],
+                   # np.cos(self.mol_angles[ith_molecule]),np.sin(self.mol_angles[ith_molecule]),
+                   # color='white',pivot='middle')
 
     def plot_raveled_image(self, image, ax=None):
         if ax is None:

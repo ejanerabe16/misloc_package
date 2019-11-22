@@ -387,13 +387,6 @@ rod
 class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
     """ Give BEM simulation class instance same attributes as Model Exp
         class for easy plotting.
-
-        Current options for BEM simulations are
-        selected by the class instance variable 'simulation_type';
-            - 'disk' : disk with layer substrate, BROKEN.
-            - 'bare_disk_JC' : Gold disk in water, JC data.
-            - 'bare_disk_Drude' : Gold disk in water, Drude model.
-                built in to BEM.
         """
     def __init__(self,
         locations,
