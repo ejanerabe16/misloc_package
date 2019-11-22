@@ -308,12 +308,12 @@ def sparse_ret_prolate_spheroid_polarizability(
         alpha_22 = alphaMW_ii(2, a_x, a_yz)
         alpha_33 = alphaMW_ii(1, a_x, a_yz)
 
-    if isolate_mode == None:
+    if isolate_mode is None:
         alpha_ij = np.array([[ alpha_11,       0.,       0.],
                              [       0., alpha_22,       0.],
                              [       0.,       0., alpha_33]])
 
-    elif isolate_mode == 'long':
+    elif isolate_mode is 'long':
         if a_x > a_yz:
             ## Keep only alpha_x for prolate
             alpha_ij = np.array([
@@ -328,7 +328,7 @@ def sparse_ret_prolate_spheroid_polarizability(
                 [       0., alpha_22,       0.],
                 [       0.,       0.,       0.]
                 ])
-    elif (isolate_mode == 'short') or (isolate_mode == 'trans'):
+    elif (isolate_mode is 'short') or (isolate_mode is 'trans'):
         if a_x > a_yz:
             alpha_ij = np.array([
                 [       0.,       0.,       0.],
