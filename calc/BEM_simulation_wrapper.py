@@ -23,8 +23,8 @@ parameter_files_path = (
     project_path + '/param'
 )
 
-curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
-parameters = yaml.load(open(parameter_files_path+curly_yaml_file_name,'r'))
+# curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
+# parameters = yaml.load(open(parameter_files_path+curly_yaml_file_name,'r'))
 
 
 # modules_path = project_path + '/solving_problems/modules'
@@ -40,7 +40,7 @@ import matplotlib as mpl
 # mpl.rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
 ## for Palatino and other serif fonts use:
 #rc('font',**{'family':'serif','serif':['Palatino']})
-mpl.rcParams['text.usetex'] = True
+# mpl.rcParams['text.usetex'] = True
 
 ## colorbar stuff
 from mpl_toolkits import axes_grid1
@@ -67,39 +67,39 @@ m_per_nm = constants['physical_constants']['nm']
 # Z_o = 376.7303 # impedence of free space in ohms (SI)
 
 ## Define some useful constants from defined parameters
-n_b = parameters['general']['background_ref_index']
-eps_b = n_b**2.
+# n_b = parameters['general']['background_ref_index']
+# eps_b = n_b**2.
 # a = parameters['plasmon']['radius']
 
 
 
 #######################################################################
 ## Optics stuff.
-sensor_size = parameters['optics']['sensor_size']*nm
-# height = 2*mm  # also defines objective lens focal length
-# height = parameters['optics']['obj_f_len']
-resolution = parameters['optics']['sensor_pts']  # image grid resolution
-## Build image sensor
-eye = diffi.observation_points(
-    x_min= -sensor_size/2,
-    x_max= sensor_size/2,
-    y_min= -sensor_size/2,
-    y_max= sensor_size/2,
-    points= resolution
-    )
+# sensor_size = parameters['optics']['sensor_size']*nm
+# # height = 2*mm  # also defines objective lens focal length
+# # height = parameters['optics']['self.obj_f_len']
+# resolution = parameters['optics']['sensor_pts']  # image grid resolution
+# ## Build image sensor
+# eye = diffi.observation_points(
+#     x_min= -sensor_size/2,
+#     x_max= sensor_size/2,
+#     y_min= -sensor_size/2,
+#     y_max= sensor_size/2,
+#     points= resolution
+#     )
 
-## Experimental parameters
-magnification = parameters['optics']['magnification']
-numerical_aperture = parameters['optics']['numerical_aperture']
-max_theta = np.arcsin(numerical_aperture) # defines physical aperture size
+# ## Experimental parameters
+# magnification = parameters['optics']['magnification']
+# numerical_aperture = parameters['optics']['numerical_aperture']
+# max_theta = np.arcsin(numerical_aperture) # defines physical aperture size
 
-## numerical parameters for calculation of scattered field
-lens_points = parameters['optics']['lens_points']
+# ## numerical parameters for calculation of scattered field
+# lens_points = parameters['optics']['lens_points']
 
-# obj_f = 1.*mm  # still dont know what this is supposed to be
-obj_f = parameters['optics']['obj_f_len']
+# # obj_f = 1.*mm  # still dont know what this is supposed to be
+# obj_f = parameters['optics']['obj_f_len']
 
-tube_f = magnification * obj_f
+# self.tube_f = magnification * obj_f
 
 ## calculate dipole magnitudes
 drive_hbar_omega = parameters['general']['drive_energy'] ## rod long mode max at 1.8578957289256757 eV
@@ -169,7 +169,8 @@ class Simulation(fit.DipoleProperties):
         mol_angle=0,
         plas_angle=np.pi/2,
         obs_points=None,
-        simulation_type='disk'
+        simulation_type='disk',
+        param_file=None,
         ):
 
         self.simulation_type = simulation_type
@@ -210,14 +211,43 @@ class Simulation(fit.DipoleProperties):
             ]
 
         if obs_points is None:
-            self.obs_points = eye
+            ## Load from param file
+            self.parameters = yaml.load(open(parameter_files_path+param_file ,'r'))
+
+            sensor_size = self.parameters['optics']['sensor_size']*nm
+            # height = 2*mm  # also defines objective lens focal length
+            # height = self.parameters['optics']['obj_f_len']
+            resolution = self.parameters['optics']['sensor_pts']  # image grid resolution
+            ## Build image sensor
+            self.obs_points = diffi.observation_points(
+                x_min= -sensor_size/2,
+                x_max= sensor_size/2,
+                y_min= -sensor_size/2,
+                y_max= sensor_size/2,
+                points= resolution
+                )
+
         else:
             self.obs_points = obs_points
 
+        ## Load microscope parameters
+        ## Experimental parameters
+        self.magnification = self.parameters['optics']['magnification']
+        self.numerical_aperture = self.parameters['optics']['numerical_aperture']
+        self.max_theta = np.arcsin(self.numerical_aperture) # defines physical aperture size
+
+        ## numerical parameters for calculation of scattered field
+        self.lens_points = self.parameters['optics']['lens_points']
+
+        # obj_f = 1.*mm  # still dont know what this is supposed to be
+        self.obj_f = self.parameters['optics']['obj_f_len']
+        self.tube_f = self.magnification * self.obj_f
 
     def mol_too_close(self):
-        '''Returns molecule locations that are outside the fluorescence quenching zone,
-            defined as 10 nm from surface of fit spheroid'''
+        ''' Returns molecule locations that are outside the
+            fluorescence quenching zone, defined as 10 nm from surface
+            of fit spheroid.
+            '''
         rotated_x = (
             np.cos(self.rod_angle)*self.input_x_mol
             +
@@ -248,7 +278,6 @@ class Simulation(fit.DipoleProperties):
                 - 'bare_disk_JC' : Gold disk in water, JC data.
                 - 'bare_disk_Drude' : Gold disk in water, Drude model.
                     built in to BEM.
-rod
             """
         if hasattr(self, 'BEM_images'):
             return self.BEM_images
@@ -278,14 +307,14 @@ rod
         # Initialize coordinates of points on hemisphere for field BEM field
         # calculation.
         sphere_points = fib.fib_alg_k_filter(
-            num_points=lens_points,
-            max_ang=max_theta
+            num_points=self.lens_points,
+            max_ang=self.max_theta
             )
         # Convert spherical coordinates to Caresian.
         cart_points_on_sph = fib.sphere_to_cart(
             sphere_points[:,0],
             sphere_points[:,1],
-            obj_f*np.ones(np.shape(sphere_points[:,0]))
+            self.obj_f*np.ones(np.shape(sphere_points[:,0]))
             )
 
         ## convert lens-integration coordinates to matlab variable
@@ -308,7 +337,9 @@ rod
         for i in range(number_of_molecules):
             print('{}th molecule'.format(int(i+1)))
             mol_location = self.mol_locations[i]
-            if np.atleast_1d(self.mol_angles).shape[0] == self.mol_locations.shape[0]:
+            if np.atleast_1d(self.mol_angles).shape[0] == (
+                self.mol_locations.shape[0]
+                ):
                 mol_angle = np.atleast_1d(self.mol_angles)[i]
             elif np.atleast_1d(self.mol_angles).shape[0] == 1:
                 mol_angle = self.mol_angles
@@ -361,10 +392,10 @@ rod
                 scattered_sph_coords=thetas_and_phis,
                 obser_pts=self.obs_points[0]*np.array([[1,-1]]),
                 z=0,
-                obj_f=obj_f,
+                obj_f=self.obj_f,
                 tube_f=tube_f,
                 k=omega_drive*self.n_b/c,
-                alpha_1_max=max_theta
+                alpha_1_max=self.max_theta
                 )
 
             diffracted_power_flux = np.real(
@@ -505,16 +536,25 @@ def save_sim_exp_inst(sim_exp_instance, data_dir_name=None):
 
     os.mkdir( path_to_data )
 #     print(path_to_data+'/BEM_images.txt')
-    np.savetxt(path_to_data+'/BEM_images.txt',sim_exp_instance.BEM_images)
-    np.savetxt(path_to_data+'/mol_locations.txt',sim_exp_instance.mol_locations)
-    np.savetxt(path_to_data+'/default_plot_limits.txt',sim_exp_instance.default_plot_limits)
-    np.savetxt(path_to_data+'/mol_angles.txt',np.atleast_1d(sim_exp_instance.mol_angles))
-    np.savetxt(path_to_data+'/rod_angle.txt',np.atleast_1d(sim_exp_instance.rod_angle))
-    np.savetxt(path_to_data+'/obs_points[0].txt',np.atleast_1d(sim_exp_instance.obs_points[0]))
-    np.savetxt(path_to_data+'/obs_points[1].txt',np.atleast_1d(sim_exp_instance.obs_points[1]))
-    np.savetxt(path_to_data+'/obs_points[2].txt',np.atleast_1d(sim_exp_instance.obs_points[2]))
+    np.savetxt(path_to_data+
+        '/BEM_images.txt',sim_exp_instance.BEM_images)
+    np.savetxt(path_to_data+
+        '/mol_locations.txt',sim_exp_instance.mol_locations)
+    np.savetxt(path_to_data+
+        '/default_plot_limits.txt',sim_exp_instance.default_plot_limits)
+    np.savetxt(path_to_data+
+        '/mol_angles.txt',np.atleast_1d(sim_exp_instance.mol_angles))
+    np.savetxt(path_to_data+
+        '/rod_angle.txt',np.atleast_1d(sim_exp_instance.rod_angle))
+    np.savetxt(path_to_data+
+        '/obs_points[0].txt',np.atleast_1d(sim_exp_instance.obs_points[0]))
+    np.savetxt(path_to_data+
+        '/obs_points[1].txt',np.atleast_1d(sim_exp_instance.obs_points[1]))
+    np.savetxt(path_to_data+
+        '/obs_points[2].txt',np.atleast_1d(sim_exp_instance.obs_points[2]))
 
-    np.savetxt(path_to_data+'/mispol_angle.txt',np.atleast_1d(sim_exp_instance.mispol_angle))
+    np.savetxt(path_to_data+
+        '/mispol_angle.txt',np.atleast_1d(sim_exp_instance.mispol_angle))
 
 
 class LoadedSimExp(SimulatedExperiment):
