@@ -128,6 +128,19 @@ n_a = constants['physical_constants']['nA']   # Avogadro's number
 # height = 2*mm  # also defines objective lens focal length
 # height = parameters['optics']['obj_f_len']]
 
+def load_param_file(file_name):
+    """ Load parameter .yaml"""
+    ## Check/fix formatting
+    if file_name[0] != '/':
+        file_name = '/'+file_name
+    if file_name[-5:] != '.yaml':
+        print(file_name[-5:])
+        file_name = file_name+'.yaml'
+    ## Load
+    loaded_params = yaml.load(
+        open(parameter_files_path+file_name, 'r'))
+    return loaded_params
+
 class DipoleProperties(object):
     """ Will eventually call parameter file as argument, currently (02/07/19)
         just loads relevant values from hardcoded paths. ew.
@@ -154,9 +167,7 @@ class DipoleProperties(object):
 
         ## If parameter file is given, load all relevent parameters.
         if param_file is not None:
-            self.parameters = yaml.load(
-                open(parameter_files_path+param_file, 'r')
-                    )
+            self.parameters = load_param_file(param_file)
             ## Define all parameters as instance attributes.
             self.drive_energy_eV = self.parameters['general']['drive_energy']
             self.eps_inf = self.parameters['plasmon']['fit_eps_inf']
@@ -260,9 +271,7 @@ class BeamSplitter(object):
                 ' because it seems like a recipe for mistakes')
         else:
             ## Load given parameter file.
-            self.parameters = yaml.load(
-                        open(parameter_files_path+param_file, 'r')
-                        )
+            self.parameters = load_param_file(param_file)
         self.sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
 
     def powers_and_angels(self,E):
@@ -311,9 +320,7 @@ class FittingTools(object):
             ## Check for given resolution
             if param_file is not None:
                 ## Load resolution from parameter file
-                self.parameters = yaml.load(
-                    open(parameter_files_path+param_file, 'r')
-                    )
+                self.parameters = load_param_file(param_file)
                 # image grid resolution
                 resolution = self.parameters['optics']['sensor_pts']
                 self.sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
@@ -468,7 +475,9 @@ class PlottingStuff(object):
     a_shade_of_green = [0/255, 219/255, 1/255]
 
     def __init__(self,
-        param_file
+        param_file=None,
+        a_long_meters=None,
+        a_short_meters=None,
         ):
         """ Establish dipole properties as atributes for reference in plotting
             functions.
@@ -477,11 +486,14 @@ class PlottingStuff(object):
             neccesary and confusing down the line
             """
         ## Load nanoparticle radii from parameter file
-        parameters = yaml.load(
-                open(parameter_files_path+param_file, 'r')
-                    )
-        self.a_long_meters = parameters['plasmon']['fit_a1'] * m_per_nm
-        self.a_short_meters = parameters['plasmon']['fit_a2'] * m_per_nm
+        if param_file is not None:
+            parameters = load_param_file(param_file)
+            self.a_long_meters = parameters['plasmon']['fit_a1'] * m_per_nm
+            self.a_short_meters = parameters['plasmon']['fit_a2'] * m_per_nm
+        elif a_long_meters is not None and a_short_meters is not None:
+            self.a_long_meters = a_long_meters * m_per_nm
+            self.a_short_meters = a_short_meters * m_per_nm
+        else: raise ValueError('Need param_file or both radii')
 
         ## Define geometry of NP in plot/focal plane
         self.el_c = self.a_short_meters / m_per_nm

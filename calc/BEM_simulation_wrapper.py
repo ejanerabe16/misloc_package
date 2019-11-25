@@ -102,8 +102,8 @@ m_per_nm = constants['physical_constants']['nm']
 # self.tube_f = magnification * obj_f
 
 ## calculate dipole magnitudes
-drive_hbar_omega = parameters['general']['drive_energy'] ## rod long mode max at 1.8578957289256757 eV
-omega_drive = drive_hbar_omega/hbar  # driving frequency
+# drive_energy_eV = parameters['general']['drive_energy'] ## rod long mode max at 1.8578957289256757 eV
+# omega_drive = drive_energy_eV/hbar  # driving frequency
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -210,6 +210,9 @@ class Simulation(fit.DipoleProperties):
                 )
             ]
 
+        ## Get all of the system specific attributes
+        fit.DipoleProperties.__init__(self, param_file=param_file)
+
         if obs_points is None:
             ## Load from param file
             self.parameters = yaml.load(open(parameter_files_path+param_file ,'r'))
@@ -230,18 +233,22 @@ class Simulation(fit.DipoleProperties):
         else:
             self.obs_points = obs_points
 
-        ## Load microscope parameters
-        ## Experimental parameters
-        self.magnification = self.parameters['optics']['magnification']
-        self.numerical_aperture = self.parameters['optics']['numerical_aperture']
-        self.max_theta = np.arcsin(self.numerical_aperture) # defines physical aperture size
+        # ## Load microscope parameters
+        # ## Experimental parameters
+        # self.magnification = self.parameters['optics']['magnification']
+        # self.numerical_aperture = self.parameters['optics']['numerical_aperture']
+        # self.max_theta = np.arcsin(self.numerical_aperture) # defines physical aperture size
 
-        ## numerical parameters for calculation of scattered field
-        self.lens_points = self.parameters['optics']['lens_points']
+        # ## numerical parameters for calculation of scattered field
+        # self.lens_points = self.parameters['optics']['lens_points']
 
-        # obj_f = 1.*mm  # still dont know what this is supposed to be
-        self.obj_f = self.parameters['optics']['obj_f_len']
-        self.tube_f = self.magnification * self.obj_f
+        # # obj_f = 1.*mm  # still dont know what this is supposed to be
+        # self.obj_f = self.parameters['optics']['obj_f_len']
+        # self.tube_f = self.magnification * self.obj_f
+
+        # ## Load Drive energy
+        # self.drive_energy_eV = parameters['general']['drive_energy']
+        #     ## rod long mode max at 1.8578957289256757 eV
 
     def mol_too_close(self):
         ''' Returns molecule locations that are outside the
@@ -321,7 +328,7 @@ class Simulation(fit.DipoleProperties):
         matlab_cart_points_on_sph = matlab.double(cart_points_on_sph.tolist())
 
         # Setup values for field calculation
-        drive_energy = drive_hbar_omega
+        drive_energy = self.drive_energy_eV
         number_of_molecules = self.mol_locations.shape[0]
 
         # Initialize outputs.
@@ -394,7 +401,7 @@ class Simulation(fit.DipoleProperties):
                 z=0,
                 obj_f=self.obj_f,
                 tube_f=tube_f,
-                k=omega_drive*self.n_b/c,
+                k=(self.drive_energy_eV/hbar)*self.n_b/c,
                 alpha_1_max=self.max_theta
                 )
 
@@ -560,12 +567,14 @@ def save_sim_exp_inst(sim_exp_instance, data_dir_name=None):
 class LoadedSimExp(SimulatedExperiment):
 
     def __init__(self,
-        data_dir_name
-                ):
+        data_dir_name,
+        param_file,
+        ):
 
         fit.DipoleProperties.__init__(self,
 #             isolate_mode=isolate_mode,
 #             drive_energy_eV=drive_energy_eV,
+            param_file
             )
 
         self.path_to_data = (
@@ -614,16 +623,25 @@ def save_fit_inst(fit_instance, exp_instance, data_dir_name):
     save_sim_exp_inst(exp_instance, data_dir_name+'/exp_instance')
 
 
-class LoadedFit(fit.FitModelToData):
+class LoadedFit(fit.FitModelToData, fit.PlottingStuff):
 
     def __init__(self,
-        data_dir_name
-                ):
+        data_dir_name,
+        param_file,
+        ):
 
         fit.DipoleProperties.__init__(self,
 #             isolate_mode=isolate_mode,
 #             drive_energy_eV=drive_energy_eV,
+            param_file=param_file
             )
+        ## get plot NP radii and quenching zone
+        fit.PlottingStuff.__init__(self,
+#             isolate_mode=isolate_mode,
+#             drive_energy_eV=drive_energy_eV,
+            param_file=param_file
+            )
+
 
         self.path_to_data = (
             project_path
@@ -639,7 +657,8 @@ class LoadedFit(fit.FitModelToData):
             )
 
         self.loaded_sim_exp_instance = LoadedSimExp(
-            data_dir_name+'/exp_instance'
+            data_dir_name+'/exp_instance',
+            param_file=param_file
             )
 
     def plot_fit_results_as_quiver_map(
