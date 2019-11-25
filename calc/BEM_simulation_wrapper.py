@@ -173,9 +173,12 @@ class Simulation(fit.DipoleProperties):
         param_file=None,
         ):
 
+        ## Get all of the system specific attributes
+        fit.DipoleProperties.__init__(self, param_file=param_file)
+
         self.simulation_type = simulation_type
 
-        self.n_b = n_b ## vacuum
+        # self.n_b = n_b ## vacuum
         self.mol_locations = locations
         self.mol_angles = mol_angle
         self.rod_angle = plas_angle
@@ -210,12 +213,10 @@ class Simulation(fit.DipoleProperties):
                 )
             ]
 
-        ## Get all of the system specific attributes
-        fit.DipoleProperties.__init__(self, param_file=param_file)
 
         if obs_points is None:
             ## Load from param file
-            self.parameters = yaml.load(open(parameter_files_path+param_file ,'r'))
+            self.parameters = fit.load_param_file(param_file)
 
             sensor_size = self.parameters['optics']['sensor_size']*nm
             # height = 2*mm  # also defines objective lens focal length
@@ -233,18 +234,18 @@ class Simulation(fit.DipoleProperties):
         else:
             self.obs_points = obs_points
 
-        # ## Load microscope parameters
-        # ## Experimental parameters
-        # self.magnification = self.parameters['optics']['magnification']
-        # self.numerical_aperture = self.parameters['optics']['numerical_aperture']
-        # self.max_theta = np.arcsin(self.numerical_aperture) # defines physical aperture size
+        ## Load microscope parameters
+        ## Experimental parameters
+        self.magnification = self.parameters['optics']['magnification']
+        self.numerical_aperture = self.parameters['optics']['numerical_aperture']
+        self.max_theta = np.arcsin(self.numerical_aperture) # defines physical aperture size
 
-        # ## numerical parameters for calculation of scattered field
-        # self.lens_points = self.parameters['optics']['lens_points']
+        ## numerical parameters for calculation of scattered field
+        self.lens_points = self.parameters['optics']['lens_points']
 
-        # # obj_f = 1.*mm  # still dont know what this is supposed to be
-        # self.obj_f = self.parameters['optics']['obj_f_len']
-        # self.tube_f = self.magnification * self.obj_f
+        # obj_f = 1.*mm  # still dont know what this is supposed to be
+        self.obj_f = self.parameters['optics']['obj_f_len']
+        self.tube_f = self.magnification * self.obj_f
 
         # ## Load Drive energy
         # self.drive_energy_eV = parameters['general']['drive_energy']
@@ -374,7 +375,7 @@ class Simulation(fit.DipoleProperties):
                 drive_energy,
                 matlab.double(list(mol_orientation)),
                 matlab_cart_points_on_sph,
-                float(self.n_b**2.),
+                float(self.eps_b),
                 nargout=2)
 
             # Format outputs for np
@@ -400,8 +401,8 @@ class Simulation(fit.DipoleProperties):
                 obser_pts=self.obs_points[0]*np.array([[1,-1]]),
                 z=0,
                 obj_f=self.obj_f,
-                tube_f=tube_f,
-                k=(self.drive_energy_eV/hbar)*self.n_b/c,
+                tube_f=self.tube_f,
+                k=(self.drive_energy_eV/hbar)*(np.sqrt(self.eps_b))/c,
                 alpha_1_max=self.max_theta
                 )
 
@@ -422,7 +423,7 @@ class Simulation(fit.DipoleProperties):
         return self.BEM_images
 
 
-class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
+class SimulatedExperiment(Simulation, fit.MolCoupNanoRodExp):
     """ Give BEM simulation class instance same attributes as Model Exp
         class for easy plotting.
         """
@@ -431,18 +432,25 @@ class SimulatedExperiment(Simulation,fit.MolCoupNanoRodExp):
         mol_angle=0,
         plas_angle=np.pi/2,
         obs_points=None,
-        simulation_type='disk'
+        simulation_type='disk',
+        **kwargs
         ):
 
-        fit.CoupledDipoles.__init__(self, obs_points)
+        fit.CoupledDipoles.__init__(self,
+            # obs_points=obs_points,
+            **kwargs
+            )
 
         Simulation.__init__(self,
             locations,
             mol_angle,
             plas_angle,
             obs_points,
-            simulation_type=simulation_type
+            simulation_type=simulation_type,
+            **kwargs
             )
+        ## Get drive intensity
+        fit.BeamSplitter.__init__(self, **kwargs)
 
     def plot_mispol_map_wMisloc(self,
         plot_limits=None,

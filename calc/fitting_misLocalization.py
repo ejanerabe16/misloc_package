@@ -134,7 +134,7 @@ def load_param_file(file_name):
     if file_name[0] != '/':
         file_name = '/'+file_name
     if file_name[-5:] != '.yaml':
-        print(file_name[-5:])
+        # print(file_name[-5:])
         file_name = file_name+'.yaml'
     ## Load
     loaded_params = yaml.load(
@@ -163,6 +163,12 @@ class DipoleProperties(object):
         fluo_quench_region_nm=10,
         isolate_mode=None,
         drive_energy_eV=None,
+        omega_plasma=None,
+        gamma_drude=None,
+        a_long_meters=None,
+        a_short_meters=None,
+        fluo_quench_range=None,
+        **kwargs
         ):
 
         ## If parameter file is given, load all relevent parameters.
@@ -185,32 +191,21 @@ class DipoleProperties(object):
             ## And some that will only get used in creation of the molecule
             ## polarizabity, and therefore don't need to be instance
             ## attributes.
-            fluo_ext_coef = self.parameters['fluorophore']['extinction_coeff']
-            fluo_mass_hbar_gamma = self.parameters['fluorophore']['mass_gamma']
-            fluo_nr_hbar_gamma = self.parameters['fluorophore']['test_gamma']
+            self.fluo_ext_coef = self.parameters['fluorophore']['extinction_coeff']
+            self.fluo_mass_hbar_gamma = self.parameters['fluorophore']['mass_gamma']
+            self.fluo_nr_hbar_gamma = self.parameters['fluorophore']['test_gamma']
         ## If no parameter file is given, assume all variables are given.
         else:## Assume all parameters given explixitly as class args.
-            self.drive_energy_eV = drive_energy_eV
-            self.eps_inf = eps_inf
-            self.omega_plasma = hbar_omega_plasma / hbar
-            self.gamma_drude = hbar_gamma_drude / hbar
-            self.a_long_meters = a_long_in_nm * m_per_nm
-            self.a_short_meters = a_short_in_nm * m_per_nm
-            self.eps_b = eps_b
-            ## hardcoded region around nanoparticle to through out results because
-            ## dipole approximation at small proximities
-            self.fluo_quench_range = fluo_quench_region_nm
-
             ## Make sure no values were missed
             relevant_attr = [
-                self.drive_energy_eV,
-                self.eps_inf,
-                self.omega_plasma,
-                self.gamma_drude,
-                self.a_long_meters,
-                self.a_short_meters,
-                self.eps_b,
-                self.fluo_quench_range
+                drive_energy_eV,
+                eps_inf,
+                omega_plasma,
+                gamma_drude,
+                a_long_meters,
+                a_short_meters,
+                eps_b,
+                fluo_quench_range
                 ]
             relevant_attr_names = [
                 'self.drive_energy_eV',
@@ -227,17 +222,32 @@ class DipoleProperties(object):
                     'Need all attributes with manual input.\n',
                     f'missing {relevant_attr_names[relevant_attr.index(None)]}'
                     )
+            ## Otherwize sotre all those args as instance attrs
+            self.drive_energy_eV = drive_energy_eV
+            self.eps_inf = eps_inf
+            self.omega_plasma = omega_plasma
+            self.gamma_drude = gamma_drude
+            self.a_long_meters = a_long_meters
+            self.a_short_meters = a_short_meters
+            self.eps_b = eps_b
+            ## hardcoded region around nanoparticle to through out results because
+            ## dipole approximation at small proximities
+            self.fluo_quench_range = fluo_quench_region_nm
+
+            self.fluo_ext_coef = fluo_ext_coef
+            self.fluo_mass_hbar_gamma = fluo_mass_hbar_gamma
+            self.fluo_nr_hbar_gamma = fluo_nr_hbar_gamma
 
         self.alpha0_diag_dyad = cp.sparse_polarizability_tensor(
             ## This one is a little hacky, will need to fix for proper
             ## spectral reshaping later.
             mass=cp.fluorophore_mass(
-                ext_coef=fluo_ext_coef, # parameters['fluorophore']['extinction_coeff'],
-                gamma=fluo_mass_hbar_gamma/hbar, # parameters['fluorophore']['mass_gamma']/hbar
+                ext_coef=self.fluo_ext_coef, # parameters['fluorophore']['extinction_coeff'],
+                gamma=self.fluo_mass_hbar_gamma/hbar, # parameters['fluorophore']['mass_gamma']/hbar
                 ),
             w_res=self.drive_energy_eV/hbar,
             w=self.drive_energy_eV/hbar,
-            gamma_nr=fluo_nr_hbar_gamma/hbar, # parameters['fluorophore']['test_gamma']/hbar,
+            gamma_nr=self.fluo_nr_hbar_gamma/hbar, # parameters['fluorophore']['test_gamma']/hbar,
             a=0,
             eps_inf=1,
             eps_b=1
@@ -261,8 +271,20 @@ class BeamSplitter(object):
         experimentally
         """
 
-    def __init__(self, param_file=None):
-        if param_file is None:
+    def __init__(self,
+        drive_I=None,
+        sensor_size=None,
+        param_file=None,
+        **kwargs
+        ):
+        ## Truth value
+        optics_params_given = None not in [drive_I, sensor_size]
+
+        if param_file is None and optics_params_given:
+            self.drive_I = drive_I
+            self.sensor_size = sensor_size
+
+        elif param_file is None and drive_I is None:
             ## Load default
             # parameters = yaml.load(
             #     open(parameter_files_path+curly_yaml_file_name, 'r')
@@ -272,13 +294,15 @@ class BeamSplitter(object):
         else:
             ## Load given parameter file.
             self.parameters = load_param_file(param_file)
-        self.sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
+            self.drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
+            self.sensor_size = self.parameters['optics']['sensor_size']*m_per_nm
+
 
     def powers_and_angels(self,E):
         drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
 
-        normed_Ix = np.abs(E[0])**2. / drive_I
-        normed_Iy = np.abs(E[1])**2. / drive_I
+        normed_Ix = np.abs(E[0])**2. / self.drive_I
+        normed_Iy = np.abs(E[1])**2. / self.drive_I
 
         Px_per_drive_I = np.sum(normed_Ix,axis=-1) / self.sensor_size**2.
         Py_per_drive_I = np.sum(normed_Iy,axis=-1) / self.sensor_size**2.
@@ -290,8 +314,8 @@ class BeamSplitter(object):
     def powers_and_angels_no_interf(self,E1,E2):
         drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
 
-        normed_Ix = (np.abs(E1[0])**2. + np.abs(E2[0])**2.) / drive_I
-        normed_Iy = (np.abs(E1[1])**2. + np.abs(E2[1])**2.) / drive_I
+        normed_Ix = (np.abs(E1[0])**2. + np.abs(E2[0])**2.) / self.drive_I
+        normed_Iy = (np.abs(E1[1])**2. + np.abs(E2[1])**2.) / self.drive_I
 
         Px_per_drive_I = np.sum(normed_Ix,axis=-1) / self.sensor_size**2.
         Py_per_drive_I = np.sum(normed_Iy,axis=-1) / self.sensor_size**2.
@@ -305,7 +329,8 @@ class FittingTools(object):
 
     def __init__(self,
         obs_points=None,
-        param_file=None):
+        param_file=None,
+        **kwargs):
         """
         Args:
             obs_points: 3 element list (in legacy format of eye),
@@ -432,9 +457,7 @@ class FittingTools(object):
         return apparent_centroids_xy.T  ## returns [x_cen(s), y_cen(s)]
 
     def image_from_E(self, E):
-        drive_I = np.abs(self.parameters['general']['drive_amp'])**2.
-
-        normed_I = np.sum(np.abs(E)**2.,axis=0) / drive_I
+        normed_I = np.sum(np.abs(E)**2.,axis=0) / self.drive_I
 
         return normed_I
 
@@ -478,6 +501,7 @@ class PlottingStuff(object):
         param_file=None,
         a_long_meters=None,
         a_short_meters=None,
+        **kwargs
         ):
         """ Establish dipole properties as atributes for reference in plotting
             functions.
@@ -1017,17 +1041,18 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
         exclude_interference=False,
         **kwargs
         ):
-
-        ## Send param_file or specified dipole params to
-        CoupledDipoles.__init__(self,
-            **kwargs
-            )
-
         # Set up instance attributes
         self.exclude_interference = exclude_interference
         self.mol_locations = locations
         self.mol_angles = mol_angle
         self.rod_angle = plas_angle
+
+        ## Send param_file or specified dipole params to
+        CoupledDipoles.__init__(self,
+            **kwargs
+            )
+        ## define incident intensity as inst attr.
+        BeamSplitter.__init__(self, **kwargs)
 
         # Filter out molecules in region of fluorescence quenching
         # self.el_a and self.el_c are now defined inside PlottingTools
@@ -1321,7 +1346,7 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
         # save nanorod angle
 
 
-class FitModelToData(CoupledDipoles):
+class FitModelToData(CoupledDipoles, BeamSplitter):
     ''' Class to contain fitting functions that act on class 'MolCoupNanoRodExp'
     as well as variables that are needed by 'MolCoupNanoRodExp'
 
@@ -1333,6 +1358,7 @@ class FitModelToData(CoupledDipoles):
         rod_angle=None,
         **kwargs
         ):
+        ## Store all input args for later
 
         self.mol_angles=0
 
@@ -1355,6 +1381,8 @@ class FitModelToData(CoupledDipoles):
         # ## pointer to DipoleProperties.__init__() to load emitter properties
         # PlottingStuff.__init__(self, isolate_mode, **kwargs)
         CoupledDipoles.__init__(self, **kwargs)
+
+        BeamSplitter.__init__(self, **kwargs)
 
         ## define quenching readii for smart initial guess. Attributes inherited
         ## from DipoleProperties
@@ -1602,12 +1630,28 @@ class FitModelToData(CoupledDipoles):
 
     def raveled_model_of_params(self, fit_params):
         locations = np.array([[fit_params[0], fit_params[1], 0]])
+
         exp_instance = MolCoupNanoRodExp(
             locations,
             mol_angle=fit_params[2],
             plas_angle=self.rod_angle,
             obs_points=self.obs_points,
-            for_fit=True
+            for_fit=True,
+            ## List system parameters to eliminate repetative reference
+            ## to .yaml during fit routine.
+            drive_energy_eV=self.drive_energy_eV,
+            eps_inf=self.eps_inf,
+            omega_plasma=self.omega_plasma,
+            gamma_drude=self.gamma_drude,
+            a_long_meters=self.a_long_meters,
+            a_short_meters=self.a_short_meters,
+            eps_b=self.eps_b,
+            fluo_quench_range=self.fluo_quench_range,
+            fluo_ext_coef=self.fluo_ext_coef,
+            fluo_mass_hbar_gamma=self.fluo_mass_hbar_gamma,
+            fluo_nr_hbar_gamma=self.fluo_nr_hbar_gamma,
+            drive_I=self.drive_I,
+            sensor_size=self.sensor_size,
             )
         raveled_model = exp_instance.anal_images[0].ravel()
         return raveled_model
