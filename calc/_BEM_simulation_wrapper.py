@@ -30,7 +30,7 @@ parameter_files_path = (
 # modules_path = project_path + '/solving_problems/modules'
 # sys.path.append(modules_path)
 
-from . import fitting_misLocalization as fit
+from . import _fitting_misLocalization as fit
 
 ## plotting stuff
 import matplotlib.pyplot as plt

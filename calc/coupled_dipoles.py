@@ -12,6 +12,7 @@ Stopped updating notes when I started using git.
 # import sys
 # project_path = os.path.abspath(os.path.dirname(__file__))
 # sys.path.append(project_path)
+import scipy.special as spl
 
 from misloc_mispol_package import project_path
 
@@ -33,7 +34,6 @@ c = constants['physical_constants']['c']  # charge of electron in statcoloumbs
 hbar =constants['physical_constants']['hbar']
 nm = constants['physical_constants']['nm']
 n_a = constants['physical_constants']['nA']
-
 
 curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
 
@@ -359,7 +359,11 @@ def sigma_prefactor(w, eps_b):
     n_b = np.sqrt(eps_b)
     prefac = (
         (8*np.pi/3)*(w * n_b/ c)**4.
-        /(0.5*n_b) # copied from MNPBEM source
+        /(
+        # 0.5
+        # *
+        n_b
+        ) # copied from MNPBEM source
         )
     return prefac
 
@@ -457,6 +461,132 @@ def sparse_ret_sphere_polarizability(
     alpha_22 = alphaMW_ii(2, a)
     alpha_33 = alphaMW_ii(3, a)
 
+    alpha_tensor = distribute_sphere_alpha_components_into_tensor(
+        alpha_11,
+        alpha_22,
+        alpha_33,
+        isolate_mode,
+        )
+
+    return alpha_tensor
+
+
+def sparse_sphere_polarizability_TMatExp(
+    eps,
+    eps_b,
+    a,
+    w,
+    isolate_mode=None,
+    ):
+
+    '''Follows Moroz, A. Depolarization field of spheroidal particles,
+        J. Opt. Soc. Am. B 26, 517
+        but differs in assuming that the long axis is x oriented
+        '''
+    ### Define QS polarizability 'alphaR'
+    def alphaTME_ii(a):
+        ''' returns components of alpha in diagonal basis with a_x denoting
+            long axis
+        '''
+        eps_r = eps / eps_b
+        ka = w*np.sqrt(eps_b)/c * a
+
+        alpha = (eps_r - 1)/(
+            eps_r + 2 - (6*eps_r - 12)*(ka**2./10) - 1j*(2*ka**3./3)(eps_r - 1)
+            ) * a**3.
+
+        return alpha
+
+    alpha_11 = alphaTME_ii(a)
+    alpha_22 = alphaTME_ii(a)
+    alpha_33 = alphaTME_ii(a)
+
+    alpha_tensor = distribute_sphere_alpha_components_into_tensor(
+        alpha_11,
+        alpha_22,
+        alpha_33,
+        isolate_mode,
+        )
+
+    return alpha_tensor
+
+
+def sparse_sphere_polarizability_Mie(
+    eps,
+    eps_b,
+    a,
+    w,
+    isolate_mode=None,
+    ):
+
+    '''Follows Moroz, A. Depolarization field of spheroidal particles,
+        J. Opt. Soc. Am. B 26, 517
+        but differs in assuming that the long axis is x oriented
+        '''
+    ### Define QS polarizability 'alphaR'
+    def alphaTME_ii(a):
+        ''' returns components of alpha in diagonal basis with a_x denoting
+            long axis
+        '''
+        eps_r = eps / eps_b
+        m = np.sqrt(eps_r)
+        k = w*np.sqrt(eps_b)/c
+        x = k*a
+
+        j1x = spl.spherical_jn(1,x)
+        xj1x_prime = (
+            spl.spherical_jn(1,x) +
+            x*spl.spherical_jn(1,x, derivative=True)
+            )
+
+        j1mx = spl.spherical_jn(1,m*x)
+        mxj1mx_prime = (
+            spl.spherical_jn(1,m*x) +
+            m*x*spl.spherical_jn(1,m*x, derivative=True)
+            )
+
+        def h1(x, der):
+            return (
+                spl.spherical_jn(1, x, derivative=der)
+                +
+                1j*spl.spherical_yn(1, x, derivative=der)
+                )
+        h1x = h1(x, False)
+        xh1x_prime = (
+            h1(x, False) +
+            x*h1(x, True)
+            )
+
+        a_mie =(
+            (m**2.*j1mx*xj1x_prime - j1x*mxj1mx_prime)
+            /
+            (m**2.*j1mx*xh1x_prime - h1x*mxj1mx_prime)
+            )
+
+        alpha = 1j*3/(2*k**3.)*a_mie
+
+        return alpha
+
+    alpha_11 = alphaTME_ii(a)
+    alpha_22 = alphaTME_ii(a)
+    alpha_33 = alphaTME_ii(a)
+
+    alpha_tensor = distribute_sphere_alpha_components_into_tensor(
+        alpha_11,
+        alpha_22,
+        alpha_33,
+        isolate_mode,
+        )
+
+    return alpha_tensor
+
+
+def distribute_sphere_alpha_components_into_tensor(
+    alpha_11,
+    alpha_22,
+    alpha_33,
+    isolate_mode):
+
     ## Reorganize matrix dimensions if multiple frequencies given
     if type(alpha_11) is np.ndarray and alpha_11.size > 1:
         alpha_11 = alpha_11[..., None, None]
@@ -464,7 +594,6 @@ def sparse_ret_sphere_polarizability(
         alpha_22 = alpha_22[..., None, None]
     if type(alpha_33) is np.ndarray and alpha_33.size > 1:
         alpha_33 = alpha_33[..., None, None]
-
 
     if isolate_mode == None:
         alpha_ij = (
