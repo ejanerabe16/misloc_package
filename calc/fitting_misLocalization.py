@@ -170,7 +170,9 @@ class DipoleProperties(object):
         a_long_meters=None,
         a_short_meters=None,
         fluo_quench_range=None,
+        drive_amp=None,
         is_sphere=None,
+        sphere_style='MLWA',
         **kwargs
         ):
 
@@ -216,6 +218,8 @@ class DipoleProperties(object):
             self.fluo_ext_coef = self.parameters['fluorophore']['extinction_coeff']
             self.fluo_mass_hbar_gamma = self.parameters['fluorophore']['mass_gamma']
             self.fluo_nr_hbar_gamma = self.parameters['fluorophore']['test_gamma']
+
+            self.drive_amp = self.parameters['general']['drive_amp']
         ## If no parameter file is given, assume all variables are given.
         else:## Assume all parameters given explixitly as class args.
             ## Make sure no values were missed
@@ -261,6 +265,7 @@ class DipoleProperties(object):
             self.fluo_nr_hbar_gamma = fluo_nr_hbar_gamma
 
             self.is_sphere = is_sphere
+            self.drive_amp = drive_amp
 
         self.alpha0_diag_dyad = cp.sparse_polarizability_tensor(
             ## This one is a little hacky, will need to fix for proper
@@ -268,6 +273,7 @@ class DipoleProperties(object):
             mass=cp.fluorophore_mass(
                 ext_coef=self.fluo_ext_coef, # parameters['fluorophore']['extinction_coeff'],
                 gamma=self.fluo_mass_hbar_gamma/hbar, # parameters['fluorophore']['mass_gamma']/hbar
+                n_b=np.sqrt(self.eps_b)
                 ),
             w_res=self.drive_energy_eV/hbar,
             w=self.drive_energy_eV/hbar,
@@ -279,16 +285,42 @@ class DipoleProperties(object):
 
         if self.is_sphere:
 
-            self.alpha1_diag_dyad = (
-                cp.sparse_ret_sphere_polarizability_Drude(
-                    w=self.drive_energy_eV/hbar,
-                    eps_inf=self.eps_inf,
-                    w_p= self.omega_plasma,
-                    gamma=self.gamma_drude,
-                    eps_b=self.eps_b,
-                    a=self.a_long_meters,
-                    isolate_mode=isolate_mode)
-                )
+            if sphere_style == 'MLWA':
+                self.alpha1_diag_dyad = (
+                    cp.sparse_ret_sphere_polarizability_Drude(
+                        w=self.drive_energy_eV/hbar,
+                        eps_inf=self.eps_inf,
+                        w_p= self.omega_plasma,
+                        gamma=self.gamma_drude,
+                        eps_b=self.eps_b,
+                        a=self.a_long_meters,
+                        isolate_mode=isolate_mode)
+                    )
+
+            elif sphere_style == 'TMatExp':
+                self.alpha1_diag_dyad = (
+                    cp.sparse_TMatExp_sphere_polarizability_Drude(
+                        w=self.drive_energy_eV/hbar,
+                        eps_inf=self.eps_inf,
+                        w_p= self.omega_plasma,
+                        gamma=self.gamma_drude,
+                        eps_b=self.eps_b,
+                        a=self.a_long_meters,
+                        isolate_mode=isolate_mode)
+                    )
+
+            elif sphere_style == 'Mie':
+                self.alpha1_diag_dyad = (
+                    cp.sparse_Mie_sphere_polarizability_Drude(
+                        w=self.drive_energy_eV/hbar,
+                        eps_inf=self.eps_inf,
+                        w_p= self.omega_plasma,
+                        gamma=self.gamma_drude,
+                        eps_b=self.eps_b,
+                        a=self.a_long_meters,
+                        isolate_mode=isolate_mode)
+                    )
+
 
         elif not self.is_sphere:
 
@@ -1046,8 +1078,11 @@ class CoupledDipoles(PlottableDipoles, FittingTools):
             plas_angle,
             d_col=d,
             E_d_angle=None,
+            drive_hbar_w=self.drive_energy_eV,
             alpha0_diag=self.alpha0_diag_dyad,
             alpha1_diag=self.alpha1_diag_dyad,
+            n_b=np.sqrt(self.eps_b),
+            drive_amp=self.drive_amp,
             )
         mol_E = self.mb_p_fields(
             dipole_mag_array=p0,
@@ -1058,11 +1093,11 @@ class CoupledDipoles(PlottableDipoles, FittingTools):
             dipole_coordinate_array=np.zeros(d.shape),
             )
 
-        # p0_unc, = cp.uncoupled_p0(mol_angle=0, d_col=d[0,None], E_d_angle=None)
         p0_unc, = cp.uncoupled_p0(
             mol_angle,
             E_d_angle=None,
-            drive_hbar_w=self.drive_energy_eV,
+            alpha_0_p0=self.alpha0_diag_dyad,
+            drive_amp=self.drive_amp,
             )
     #     print('p0.shape = ',p0.shape)
     #     print('p1.shape = ',p1.shape)
@@ -1211,7 +1246,7 @@ class MolCoupNanoRodExp(CoupledDipoles, BeamSplitter):
 
         d = locations*m_per_nm
 
-        Gd = cp.G(self.drive_energy_eV, d)
+        Gd = cp.G(self.drive_energy_eV, d, np.sqrt(self.eps_b))
 
         Gd_dot_p0 = np.einsum('...ij,...j->...i', Gd, self.p0)
 
@@ -1733,7 +1768,8 @@ class FitModelToData(CoupledDipoles, BeamSplitter):
             fluo_nr_hbar_gamma=self.fluo_nr_hbar_gamma,
             drive_I=self.drive_I,
             sensor_size=self.sensor_size,
-            is_sphere=self.is_sphere
+            is_sphere=self.is_sphere,
+            drive_amp=self.drive_amp,
             )
         raveled_model = exp_instance.anal_images[0].ravel()
         return raveled_model

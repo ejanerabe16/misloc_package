@@ -35,32 +35,24 @@ hbar =constants['physical_constants']['hbar']
 nm = constants['physical_constants']['nm']
 n_a = constants['physical_constants']['nA']
 
-curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
+# curly_yaml_file_name = '/curly_nrod_water_JC.yaml'
 
 # print('reading parameters from {}'.format(
 #     parameter_files_path+curly_yaml_file_name
 #     )
 # )
 
-opened_param_file = open(
-    parameter_files_path+curly_yaml_file_name,'r'
-    )
-parameters = yaml.load(opened_param_file)
-# print(curly_yaml_file_name)
-## System background
-n_b = parameters['general']['background_ref_index']
-eps_b = n_b**2.
-
-## Plasmon Drude properties
-# hbar_w_p = parameters['plasmon']['plasma_energy']
-# drude_damping_energy = parameters['plasmon']['drude_damping_energy']
-# eps_inf = parameters['plasmon']['eps_inf']
-
-## Other plasmon properties
-# a = parameters['plasmon']['radius']
+# opened_param_file = open(
+#     parameter_files_path+curly_yaml_file_name,'r'
+#     )
+# parameters = yaml.load(opened_param_file)
+# # print(curly_yaml_file_name)
+# ## System background
+# n_b = parameters['general']['background_ref_index']
+# eps_b = n_b**2.
 
 ## Driving force
-ficticious_field_amp = parameters['general']['drive_amp']
+# ficticious_field_amp = parameters['general']['drive_amp']
 
 # normalization = 1
 # print('polarizability reduced by factor of {}'.format(normalization))
@@ -79,7 +71,7 @@ ficticious_field_amp = parameters['general']['drive_amp']
 
 
 ## Adopted from old oscillator code
-def fluorophore_mass(ext_coef, gamma):
+def fluorophore_mass(ext_coef, gamma, n_b):
     '''Derived at ressonance'''
     m = 4 * np.pi * e**2 * n_a  / (
             ext_coef * np.log(10) * c * n_b * gamma
@@ -641,6 +633,29 @@ def distribute_sphere_alpha_components_into_tensor(
     return alpha_ij
 
 
+def sparse_TMatExp_sphere_polarizability_Drude(w, eps_inf, w_p, gamma,
+    eps_b, a, isolate_mode=None):
+    ''' '''
+    return sparse_sphere_polarizability_TMatExp(
+       drude_model(w, eps_inf, w_p, gamma),
+       eps_b,
+       a,
+       w,
+       isolate_mode,
+       )
+
+
+def sparse_Mie_sphere_polarizability_Drude(w, eps_inf, w_p, gamma,
+    eps_b, a, isolate_mode=None):
+    ''' '''
+    return sparse_sphere_polarizability_Mie(
+       drude_model(w, eps_inf, w_p, gamma),
+       eps_b,
+       a,
+       w,
+       isolate_mode,
+       )
+
 
 def sparse_ret_sphere_polarizability_Drude(w, eps_inf, w_p, gamma,
     eps_b, a, isolate_mode=None):
@@ -722,9 +737,11 @@ def dipole_mags_gened(
     plas_angle,
     d_col,
     E_d_angle=None,
-    drive_hbar_w=parameters['general']['drive_energy'],
+    drive_hbar_w=None,
     alpha0_diag=None,
     alpha1_diag=None,
+    n_b=1.33,
+    drive_amp=1
     ):
     """ Calculate dipole magnitudes with generalized dyadic
         polarizabilities.
@@ -742,7 +759,7 @@ def dipole_mags_gened(
     if E_d_angle == None:
         E_d_angle = mol_angle
     # rotate driving field into lab frame
-    E_drive = rotation_by(E_d_angle) @ np.array([1,0,0])*ficticious_field_amp
+    E_drive = rotation_by(E_d_angle) @ np.array([1,0,0])*drive_amp
 
 
     alpha_0_p0 = alpha0_diag
@@ -751,7 +768,7 @@ def dipole_mags_gened(
     alpha_1_p1 = alpha1_diag
     alpha_1 = rotation_by(-phi_1) @ alpha_1_p1 @ rotation_by(phi_1)
 
-    G_d = G(drive_hbar_w, d_col)
+    G_d = G(drive_hbar_w, d_col, n_b)
 
     geometric_coupling_01 = np.linalg.inv(
         np.identity(3) - alpha_0 @ G_d @ alpha_1 @ G_d
@@ -788,7 +805,7 @@ def rotation_by(by_angle):
 
 
 ## define coupling diad
-def G(drive_hbar_w, d_col):
+def G(drive_hbar_w, d_col, n_b):
     ''' assumes input arrays:
     drive_hbar_w : float
     and vectors,
@@ -851,19 +868,11 @@ def eV_to_Hz(energy):
 def uncoupled_p0(
     mol_angle,
     E_d_angle=None,
-    drive_hbar_w=parameters['general']['drive_energy'],
-    n_b=parameters['general']['background_ref_index']
+    alpha_0_p0=None,
+    drive_amp=1,
     ):
-    # drive_hbar_w = parameters['general']['drive_energy']
-    w = drive_hbar_w/hbar
-    # w_res = w
-    # gamma_nr = drude_damping_energy/hbar
-    # eps_inf =
-
-    eps_b = n_b**2.
 
     phi_0 = mol_angle ## angle of bf_p0
-    p0_hat = rotation_by(phi_0) @ np.array([1,0,0])
 
     # phi_1 = plas_angle ## angle of bf_p1
     # p1_hat = rotation_by(phi_1) @ np.array([1,0,0])
@@ -872,23 +881,11 @@ def uncoupled_p0(
 
     if E_d_angle == None:
         E_d_angle = mol_angle
-    E_drive = rotation_by(E_d_angle) @ np.array([1,0,0])*ficticious_field_amp
+    E_drive = rotation_by(E_d_angle) @ np.array([1,0,0])*drive_amp
 
-    mole_eff_mass = fluorophore_mass(
-        ext_coef=parameters['fluorophore']['extinction_coeff'],
-        gamma=parameters['fluorophore']['mass_gamma']/hbar
-        )
-    alpha_0_p0 = sparse_polarizability_tensor(
-        mass=mole_eff_mass,
-        w_res=parameters['fluorophore']['res_energy']/hbar,
-        w=w,
-        gamma_nr=parameters['fluorophore']['test_gamma']/hbar,
-        a=0,
-        eps_inf=1,
-        eps_b=1)
     alpha_0 = rotation_by(-phi_0) @ alpha_0_p0 @ rotation_by(phi_0)
 
-    p0_unc = np.einsum('...ij,...j->...i',alpha_0, E_drive)
+    p0_unc = np.einsum('...ij,...j->...i', alpha_0, E_drive)
 
     return [p0_unc]
 
@@ -964,7 +961,7 @@ def sigma_scat_coupled(
 
     # print(f'p_0, p_1 = {p_0, p_1}')
 
-    G_d = G(drive_hbar_w, d_col)
+    G_d = G(drive_hbar_w, d_col, n_b)
 
 
     interference_term = np.sum((
@@ -1003,9 +1000,11 @@ def dipole_moments_per_omega(
     plas_angle,
     d,
     E_d_angle=None,
-    drive_hbar_w=parameters['general']['drive_energy'],
+    drive_hbar_w=None,
     alpha0_diag_of_omega=None,
     alpha1_diag_of_omega=None,
+    n_b=1.33,
+    drive_amp=1
     ):
 
     d_col = np.asarray(d).reshape((1, 3))
@@ -1020,6 +1019,8 @@ def dipole_moments_per_omega(
         drive_hbar_w=drive_hbar_w,
         alpha0_diag=alpha0_diag,
         alpha1_diag=alpha1_diag,
+        n_b=n_b,
+        drive_amp=drive_amp
         )
 
     return p_0, p_1
