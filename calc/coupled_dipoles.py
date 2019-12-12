@@ -484,7 +484,11 @@ def sparse_sphere_polarizability_TMatExp(
         ka = w*np.sqrt(eps_b)/c * a
 
         alpha = (eps_r - 1)/(
-            eps_r + 2 - (6*eps_r - 12)*(ka**2./10) - 1j*(2*ka**3./3)(eps_r - 1)
+            eps_r + 2
+            -
+            (6*eps_r - 12)*(ka**2./10)
+            -
+            1j*(2*ka**3./3)*(eps_r - 1)
             ) * a**3.
 
         return alpha
@@ -740,8 +744,8 @@ def dipole_mags_gened(
     drive_hbar_w=None,
     alpha0_diag=None,
     alpha1_diag=None,
-    n_b=1.33,
-    drive_amp=1
+    n_b=None,
+    drive_amp=None,
     ):
     """ Calculate dipole magnitudes with generalized dyadic
         polarizabilities.
@@ -869,7 +873,7 @@ def uncoupled_p0(
     mol_angle,
     E_d_angle=None,
     alpha_0_p0=None,
-    drive_amp=1,
+    drive_amp=None,
     ):
 
     phi_0 = mol_angle ## angle of bf_p0
@@ -947,8 +951,8 @@ def sigma_scat_coupled(
     dipoles_moments_per_omega,
     d_col,
     drive_hbar_w,
-    n_b=1,
-    E_0=1,
+    n_b=None,
+    E_0=None,
     ):
     """ Scattering spectrum of two coupled dipoles p_0 and p_1. Derived from
         Draine's prescription of the DDA.
@@ -1003,8 +1007,8 @@ def dipole_moments_per_omega(
     drive_hbar_w=None,
     alpha0_diag_of_omega=None,
     alpha1_diag_of_omega=None,
-    n_b=1.33,
-    drive_amp=1
+    n_b=None,
+    drive_amp=None
     ):
 
     d_col = np.asarray(d).reshape((1, 3))
