@@ -21,16 +21,16 @@ optics:
   sensor_size: 2000
   sensor_pts: 100
 plasmon:
-  #
-  # 1.30752893e+01, 1.03788711e+01, 3.84087654e-02, 4.03368752e+01
+  # MLWL: 1.30752893e+01, 1.03788711e+01, 3.84087654e-02, 4.03368752e+01
+  # Mie: 9.82335326e+00, 9.06705560e+00, 3.34860149e-02, 4.12504947e+01
   # True parameters from BEM are 
   # eps_inf = 10
   # hbar*omega_sp = 9.07053
   # hbar*gamma = 0.066
-  fit_eps_inf: 13.0752893
-  fit_hbar_gamma: 0.0384087654
-  fit_hbar_wp: 10.3788711
-  fit_a1: 40.3368752
-  fit_a2: 40.3368752
+  fit_eps_inf: 9.82335326
+  fit_hbar_gamma: 0.0334860149
+  fit_hbar_wp: 9.06705560
+  fit_a1: 41.2504947
+  fit_a2: 41.2504947
   true_a_unique: None
   true_a_degen: 40
