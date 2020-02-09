@@ -172,7 +172,7 @@ class DipoleProperties(object):
         fluo_quench_range=None,
         drive_amp=None,
         is_sphere=None,
-        sphere_style='MLWA',
+        sphere_model=None,
         **kwargs
         ):
 
@@ -202,7 +202,8 @@ class DipoleProperties(object):
                 self.is_sphere = False
                 self.true_a_un_me *= m_per_nm
 
-            self.true_a_de_me = self.parameters['plasmon']['true_a_degen']*m_per_nm
+            self.true_a_de_me = (
+                self.parameters['plasmon']['true_a_degen']*m_per_nm)
             n_b = self.parameters['general']['background_ref_index']
             self.eps_b = n_b**2.
             try:## loading frmo parameter file, not previously implemented
@@ -215,9 +216,12 @@ class DipoleProperties(object):
             ## And some that will only get used in creation of the molecule
             ## polarizabity, and therefore don't need to be instance
             ## attributes.
-            self.fluo_ext_coef = self.parameters['fluorophore']['extinction_coeff']
-            self.fluo_mass_hbar_gamma = self.parameters['fluorophore']['mass_gamma']
-            self.fluo_nr_hbar_gamma = self.parameters['fluorophore']['test_gamma']
+            self.fluo_ext_coef = (
+                self.parameters['fluorophore']['extinction_coeff'])
+            self.fluo_mass_hbar_gamma = (
+                self.parameters['fluorophore']['mass_gamma'])
+            self.fluo_nr_hbar_gamma = (
+                self.parameters['fluorophore']['test_gamma'])
 
             self.drive_amp = self.parameters['general']['drive_amp']
         ## If no parameter file is given, assume all variables are given.
@@ -285,7 +289,8 @@ class DipoleProperties(object):
 
         if self.is_sphere:
 
-            if sphere_style == 'MLWA':
+            self.sphere_model = sphere_model
+            if self.sphere_model == 'MLWA':
                 self.alpha1_diag_dyad = (
                     cp.sparse_ret_sphere_polarizability_Drude(
                         w=self.drive_energy_eV/hbar,
@@ -297,7 +302,7 @@ class DipoleProperties(object):
                         isolate_mode=isolate_mode)
                     )
 
-            elif sphere_style == 'TMatExp':
+            elif self.sphere_model == 'TMatExp':
                 self.alpha1_diag_dyad = (
                     cp.sparse_TMatExp_sphere_polarizability_Drude(
                         w=self.drive_energy_eV/hbar,
@@ -309,7 +314,7 @@ class DipoleProperties(object):
                         isolate_mode=isolate_mode)
                     )
 
-            elif sphere_style == 'Mie':
+            elif self.sphere_model == 'Mie':
                 self.alpha1_diag_dyad = (
                     cp.sparse_Mie_sphere_polarizability_Drude(
                         w=self.drive_energy_eV/hbar,
@@ -1770,6 +1775,7 @@ class FitModelToData(CoupledDipoles, BeamSplitter):
             sensor_size=self.sensor_size,
             is_sphere=self.is_sphere,
             drive_amp=self.drive_amp,
+            sphere_model=self.sphere_model
             )
         raveled_model = exp_instance.anal_images[0].ravel()
         return raveled_model

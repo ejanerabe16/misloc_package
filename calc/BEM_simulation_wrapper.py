@@ -172,6 +172,7 @@ class Simulation(fit.PlottableDipoles):
         simulation_type=None,
         simulation_file_name=None,
         param_file=None,
+        **kwargs
         ):
 
         ## Get all of the system specific attributes

@@ -672,11 +672,47 @@ def sparse_ret_sphere_polarizability_Drude(w, eps_inf, w_p, gamma,
        isolate_mode,
        )
 
-
+###################
+## Define scattering crossections for the 3 sphere models
+###################
 def sigma_scat_ret_sphere(w, eps_inf, w_p, gamma,
-    eps_b, a):
+    eps_b, a,):
     ''''''
     alpha = sparse_ret_sphere_polarizability_Drude(
+        w, eps_inf, w_p, gamma, eps_b, a)
+
+    ## result I had as of 02/19/19, don't remember justification
+    # sigma = (8*np.pi/3)*(w/c)**4.*np.sqrt(eps_b)**(-1)*(
+    #     np.abs(alpha[0,0])**2.
+    #     )
+
+    ## simple fix, changing k -> w*n/c
+    sigma = sigma_prefactor(w, eps_b) * (
+        np.abs(alpha[...,0,0])**2.
+        )
+    return sigma
+
+def sigma_scat_Mie_sphere(w, eps_inf, w_p, gamma,
+    eps_b, a,):
+    ''''''
+    alpha = sparse_Mie_sphere_polarizability_Drude(
+        w, eps_inf, w_p, gamma, eps_b, a)
+
+    ## result I had as of 02/19/19, don't remember justification
+    # sigma = (8*np.pi/3)*(w/c)**4.*np.sqrt(eps_b)**(-1)*(
+    #     np.abs(alpha[0,0])**2.
+    #     )
+
+    ## simple fix, changing k -> w*n/c
+    sigma = sigma_prefactor(w, eps_b) * (
+        np.abs(alpha[...,0,0])**2.
+        )
+    return sigma
+
+def sigma_scat_TMatExp_sphere(w, eps_inf, w_p, gamma,
+    eps_b, a,):
+    ''''''
+    alpha = sparse_TMatExp_sphere_polarizability_Drude(
         w, eps_inf, w_p, gamma, eps_b, a)
 
     ## result I had as of 02/19/19, don't remember justification
