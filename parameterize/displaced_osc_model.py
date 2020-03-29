@@ -220,11 +220,11 @@ def g(
         *
         (
             (hbar / (4*zeta)) * (
+                (coth_of_args_and(phi) + 1)*(
+                    dub_t_int_exp_iphi(phi))
+                -
                 (coth_of_args_and(phip) - 1)*(
                     dub_t_int_exp_iphi(phip))
-                -
-                (coth_of_args_and(phi) - 1)*(
-                    dub_t_int_exp_iphi(phi))
                 )
 #             -
 #             (
