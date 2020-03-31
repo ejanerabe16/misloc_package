@@ -31,7 +31,8 @@ def cor_fun(
     omega_q,
     gamma,
     T=50,
-    ns = np.linspace(1,10, 10)
+    ns = np.linspace(1,10, 10),
+    take_conjugate=False,
     ):
     """ Defines Correlation function
 
@@ -47,54 +48,19 @@ def cor_fun(
         """
 
     t = t*1e-15
-#     time_array = np.arange(0, t, timestep)
-    beta = 1/(kb*T)
-    zeta = np.sqrt(omega_q**2. - gamma**2./2 + 0j)
-    phi = gamma/2 + 1j*zeta
-    phip = np.conjugate(phi)
-    ## Define array of nu_n
-    nu_n = (2*np.pi/(hbar*beta))*(ns)
-    ## expand for time axis
-#     nu_n = nu_n[None, :
 
-    def coth_of_args_and(p):
-        return coth(1j*p*hbar*beta/2)
+    def exp_decay(phi):
+        return np.exp(-phi*t)
 
-    terms1and2 = (
-        (hbar / (4*zeta)) * (
-            (coth_of_args_and(phip) - 1)*(
-                np.exp(-phip*t))
-            -
-            (coth_of_args_and(phi) - 1)*(
-                np.exp(-phi)*t)
-            )
+    c_of_t = correlation_fun_root(
+        exp_decay,
+        script_d=script_d,
+        omega_q=omega_q,
+        gamma=gamma,
+        T=T,
+        ns=ns,
+        take_conjugate=take_conjugate,
         )
-
-    ## Handle sum over n differently depending on dimension of t
-    if type(t) == np.ndarray:
-        nu_n = nu_n[None, :]
-        t = t[:,None]
-
-    sum_over_n = np.sum(
-        (
-            nu_n/(
-                (omega_q**2. + nu_n**2.)**2.
-                +
-                gamma**2.*nu_n**2.
-                )
-            *
-            np.exp(-nu_n*t)
-            ),
-            axis=-1
-        )
-
-    last_term = (
-        -2*gamma/beta
-        *
-        sum_over_n
-        )
-
-    c_of_t = (script_d**2 * omega_q**3. / hbar)*(terms1and2 + last_term)
 
     return c_of_t
 
@@ -105,7 +71,7 @@ def for_cor_fun(
     script_d,
     omega_q,
     gamma,
-    take_conjugate=True,
+    take_conjugate=False,
     T=50,
     ns = np.linspace(1,10, 10)
     ):
@@ -125,61 +91,18 @@ def for_cor_fun(
 
         """
 
-    # t = t*1e-15
-#     time_array = np.arange(0, t, timestep)
-    beta = 1/(kb*T)
-    zeta = np.sqrt(omega_q**2. - gamma**2./2 + 0j)
-    if not take_conjugate:
-        phi = gamma/2 + 1j*zeta
-        phip = np.conjugate(phi)
-    if take_conjugate:
-        phi = gamma/2 - 1j*zeta
-        phip = np.conjugate(phi)
-    ## Define array of nu_n
-    nu_n = (2*np.pi/(hbar*beta))*(ns)
+    def f_t_of_exp(phi):
+        return (phi + 1j*omega)**(-1)
 
-    def coth_of_args_and(p):
-        if not take_conjugate:
-            return coth(1j*p*hbar*beta/2)
-        if take_conjugate:
-            return coth(-1j*p*hbar*beta/2)
-
-
-    terms1and2 = (
-        (hbar / (4*zeta)) * (
-            (coth_of_args_and(phip) - 1)*(
-                (phip + 1j*omega)**(-1))
-            -
-            (coth_of_args_and(phi) - 1)*(
-                (phi + 1j*omega)**(-1))
-            )
+    c_of_w = correlation_fun_root(
+        f_t_of_exp,
+        script_d=script_d,
+        omega_q=omega_q,
+        gamma=gamma,
+        T=T,
+        ns=ns,
+        take_conjugate=take_conjugate,
         )
-
-    ## Handle sum over n differently depending on dimension of omega
-    if type(omega) == np.ndarray:
-        nu_n = nu_n[None, :]
-        omega = omega[:,None]
-
-    sum_over_n = np.sum(
-        (
-            nu_n/(
-                (omega_q**2. + nu_n**2.)**2.
-                +
-                gamma**2.*nu_n**2.
-                )
-            *
-            (nu_n + 1j*omega)**(-1)
-            ),
-            axis=-1
-        )
-
-    last_term = (
-        -2*gamma/beta
-        *
-        sum_over_n
-        )
-
-    c_of_w = (script_d**2 * omega_q**3. / hbar)*(terms1and2 + last_term)
 
     return c_of_w
 
@@ -201,35 +124,80 @@ def g(
         """
 
     t = t*1e-15
+
+    def dub_t_int_exp_iphi(p):
+        return (np.exp(-p*t) + p*t - 1)/p**2.
+
+    goft = correlation_fun_root(
+        dub_t_int_exp_iphi,
+        script_d=script_d,
+        omega_q=omega_q,
+        gamma=gamma,
+        T=T,
+        ns=ns
+        )
+
+    return goft
+
+
+
+def correlation_fun_root(
+    func_of_freq,
+    # t,
+#     timestep=.01*10**(-13),
+    script_d,
+    omega_q=invcmtohz(600),
+    gamma=invcmtohz(400),
+    T=50,
+    ns = np.linspace(1,10, 10),
+    take_conjugate=False,
+    ):
+    """ Defines linebroadening function
+
+        Args:
+            func_of_freq:
+                A function handle that takes 1 argument frequency. For
+                example for the correlation funtion
+                    func_of_freq(phi) : e^(-pht*t)
+
+        """
+
+    # t = t*1e-15
 #     time_array = np.arange(0, t, timestep)
     beta = 1/(kb*T)
     zeta = np.sqrt(omega_q**2. - gamma**2./4 + 0j)
     phi = gamma/2 + 1j*zeta
     phip = gamma/2 - 1j*zeta
+    if take_conjugate:
+        phi = np.conjugate(phi)
+        phip = np.conjugate(phip)
     ## Define array of nu_n
     nu_n = (2*np.pi/(hbar*beta))*(ns)
 
     def coth_of_args_and(p):
         # print(f'coth(1j*{p}*hbar*beta/2) = {coth(1j*p*hbar*beta/2)}')
-        return coth(1j*p*hbar*beta/2)
+        imaginary_unit = 1j
+        if take_conjugate:
+            imaginary_unit = -1j
+        return coth(imaginary_unit*p*hbar*beta/2)
 
-    def dub_t_int_exp_iphi(p):
-        return (np.exp(-p*t) + p*t - 1)/p**2.
+    # def dub_t_int_exp_iphi(p):
+    #     return (np.exp(-p*t) + p*t - 1)/p**2.
 
-    goft_terms1and2 = -(
+    goft_terms1and2 = (
         (hbar / (4*zeta)) * (
-            (coth_of_args_and(phi) + 1)*(
-                dub_t_int_exp_iphi(phi))
+            (-coth_of_args_and(phi) + 1)*(
+                func_of_freq(phi))
             -
-            (coth_of_args_and(phip) + 1)*(
-                dub_t_int_exp_iphi(phip))
+            (-coth_of_args_and(phip) + 1)*(
+                func_of_freq(phip))
             )
         )
 
     ## Handle sum over n differently depending on dimension of t
-    if type(t) == np.ndarray:
-        nu_n = nu_n[None, :]
-        t = t[:,None]
+    if type(nu_n) == np.ndarray:
+        nu_n = nu_n[:, None]
+        # freqs = func_of_freq(nu_n)[:,None]
 
     sum_over_n = np.sum(
         (
@@ -239,9 +207,9 @@ def g(
                 gamma**2.*nu_n**2.
                 )
             *
-            dub_t_int_exp_iphi(nu_n)
+            func_of_freq(nu_n)
             ),
-            axis=-1
+            axis=0
         )
 
     last_term = (
@@ -257,6 +225,7 @@ def g(
         )
 
     return goft
+
 
 
 def sigma_a(
