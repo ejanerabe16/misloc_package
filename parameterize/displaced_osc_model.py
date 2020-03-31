@@ -203,35 +203,26 @@ def g(
     t = t*1e-15
 #     time_array = np.arange(0, t, timestep)
     beta = 1/(kb*T)
-    zeta = np.sqrt(omega_q**2. - gamma**2./2 + 0j)
+    zeta = np.sqrt(omega_q**2. - gamma**2./4 + 0j)
     phi = gamma/2 + 1j*zeta
-    phip = np.conjugate(phi)
+    phip = gamma/2 - 1j*zeta
     ## Define array of nu_n
     nu_n = (2*np.pi/(hbar*beta))*(ns)
 
     def coth_of_args_and(p):
+        # print(f'coth(1j*{p}*hbar*beta/2) = {coth(1j*p*hbar*beta/2)}')
         return coth(1j*p*hbar*beta/2)
 
     def dub_t_int_exp_iphi(p):
         return (np.exp(-p*t) + p*t - 1)/p**2.
 
-    goft_terms1and2 = (
-        (script_d**2 * omega_q**3. / hbar)
-        *
-        (
-            (hbar / (4*zeta)) * (
-                (coth_of_args_and(phi) + 1)*(
-                    dub_t_int_exp_iphi(phi))
-                -
-                (coth_of_args_and(phip) - 1)*(
-                    dub_t_int_exp_iphi(phip))
-                )
-#             -
-#             (
-#                 2*gamma/beta
-#                 *
-#                 sum_over_n
-#                 )
+    goft_terms1and2 = -(
+        (hbar / (4*zeta)) * (
+            (coth_of_args_and(phi) + 1)*(
+                dub_t_int_exp_iphi(phi))
+            -
+            (coth_of_args_and(phip) + 1)*(
+                dub_t_int_exp_iphi(phip))
             )
         )
 
@@ -254,14 +245,16 @@ def g(
         )
 
     last_term = (
-        (script_d**2 * omega_q**3. / hbar)
-        *
         -2*gamma/beta
         *
         sum_over_n
         )
 
-    goft = goft_terms1and2 + last_term
+    goft = (script_d**2 * omega_q**3. / hbar)*( #xi^2/m
+        goft_terms1and2
+        +
+        last_term
+        )
 
     return goft
 
