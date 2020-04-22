@@ -181,15 +181,12 @@ def correlation_fun_root(
             imaginary_unit = -1j
         return coth(imaginary_unit*p*hbar*beta/2)
 
-    # def dub_t_int_exp_iphi(p):
-    #     return (np.exp(-p*t) + p*t - 1)/p**2.
-
     goft_terms1and2 = (
         (hbar / (4*zeta)) * (
             (-coth_of_args_and(phi) + 1)*(
                 func_of_freq(phi))
-            -
-            (-coth_of_args_and(phip) + 1)*(
+            +
+            (+coth_of_args_and(phip) - 1)*(
                 func_of_freq(phip))
             )
         )
@@ -203,7 +200,7 @@ def correlation_fun_root(
         (
             nu_n/(
                 (omega_q**2. + nu_n**2.)**2.
-                +
+                -
                 gamma**2.*nu_n**2.
                 )
             *
@@ -213,7 +210,8 @@ def correlation_fun_root(
         )
 
     last_term = (
-        -2*gamma/beta
+        -
+        2*gamma/beta
         *
         sum_over_n
         )
@@ -279,7 +277,7 @@ def sigma_a(
     return result
 
 
-def sigma_e(
+def j_star_of_omega(
     omega,
     script_d,
     omega_q=invcmtohz(600),
@@ -305,31 +303,15 @@ def sigma_e(
     def integrand(t, omega=omega):
 #         print(omega)
         if type(omega) is np.ndarray:
-            return np.real(
-                np.exp(
-                    (1j*(
-                        omega[:, None]
-                        +
-                        (script_d**2.*omega_q) # 2 lambda
-                        )*t[None, :]*1e-15)
-                    -
-                    np.conj(g(
-                        t,
-                        script_d=script_d,
-                        omega_q=omega_q,
-                        **kwargs))
-                    )
-                )
+            omega = omega[:, None]
 
-        else:
-            return np.real(
-                np.exp(1j*(
-                    omega+(script_d**2.*omega_q)
-                    )*t*1e-15 - np.conj(g(
-                        t,
-                        script_d=script_d,
-                        omega_q=omega_q,
-                        **kwargs))))
+        return np.exp(1j*(
+            omega+(script_d**2.*omega_q)
+            )*t*1e-15 - np.conj(g(
+                t,
+                script_d=script_d,
+                omega_q=omega_q,
+                **kwargs)))
 
     ## generate time domain for integration
     t = np.linspace(0, t_bound, t_points)
@@ -341,6 +323,43 @@ def sigma_e(
          ## integrate last dimension of array (time)
         integral = inte.trapz(integrand(t), t, axis=-1)
         result = integral
+
+    return result
+
+
+def sigma_e(
+    omega,
+    script_d,
+    omega_q=invcmtohz(600),
+    t_bound=5,
+    t_points=100,
+    return_integrand=False,
+    **kwargs):
+    """ Absorption spectrum computed by integral over
+
+            e^(i w t - g(t))
+
+        where g(t) is the linebroadening function defined as the double
+        time integral over the correlation function of the dipole
+        operator.
+
+
+        Args:
+
+            t is in femptoseconds for g(t)
+
+        """
+
+    result = np.real(
+        np.asarray(
+            j_star_of_omega(
+                omega,
+                script_d,
+                omega_q=omega_q,
+                t_bound=t_bound,
+                t_points=t_points,
+                return_integrand=return_integrand,
+                **kwargs)))
 
     return result
 
@@ -417,6 +436,261 @@ def muk_mol_fit_fun(params, *args):
     data = data / np.max(model)
 
     return model - data
+
+
+class mol_fluo_model(object):
+
+    def __init__(self,
+        num_vib_modes,
+        hbar_omega_eg_0,
+        script_d,
+        hbar_omega_0,
+        hbar_gamma,
+        T,):
+        """ Multimode displaced oscillator model from Mukamel with
+            coupling to bath.
+
+            Args:
+                num_vib_modes: type int. Number of vibrational modes.
+                    Used to check other args for consistent numbers of
+                    parameters.
+                hbar_omega_eg_0: type(float). Zero point energy shared
+                    by all vibrational modes.
+                script_d: type(array of length 'num_vib_modes').
+                    Displacement of equalibrium position of vibrational
+                    mode in the electronic excited state.
+                hbar_omega_0: type(array of length 'num_vib_modes').
+                    Vibrational frequency of the uncoupled modes.
+                hbar_gamma: type(array of length 'num_vib_modes').
+                    Effective damping resulting from coupling to bath.
+                T: type(float). Absolute temperature.
+            """
+        ## Check consistent number of parameters
+        for param_list in [script_d, hbar_omega_0, hbar_gamma,]:
+            if len(param_list) != num_vib_modes:
+                raise ValueError("Input args are not consistent length with 'num_vib_modes'")
+
+        ## Store args as instance attributes
+        self.num_vib_modes = num_vib_modes
+        if type(hbar_omega_eg_0) is not float:
+            raise ValueError('hbar_omega_eg_0 must be float')
+        self.hbar_omega_eg_0 = hbar_omega_eg_0
+        self.script_d = script_d
+        self.hbar_omega_0 = hbar_omega_0
+        self.hbar_gamma = hbar_gamma
+        self.T = T
+
+    def omega_eg(self,
+        mode_idx=None,
+        ):
+        """Average energy gap"""
+        if mode_idx is not None:
+            _script_d = self.script_d[mode_idx]
+            _hbar_omega_0 = self.hbar_omega_0[mode_idx]
+            _hbar_gamma = self.hbar_gamma[mode_idx]
+
+            hbar_omega_eg = (
+                self.hbar_omega_eg_0
+                +
+                1/2 * _script_d**2. * _hbar_omega_0
+                )
+
+        if mode_idx is None:
+            ## Initialize the average frequency before summinbe over
+            ## vibrational modes.
+            hbar_omega_eg = self.hbar_omega_eg_0
+            ## Iterate through vibrational modes and sum g_i
+            for i in range(self.num_vib_modes):
+
+                _script_d = self.script_d[i]
+                _hbar_omega_0 = self.hbar_omega_0[i]
+                _hbar_gamma = self.hbar_gamma[i]
+
+                hbar_omega_eg += 1/2 * _script_d**2. * _hbar_omega_0
+
+        return hbar_omega_eg/hbar
+
+
+    def _correlation_fun_root(self,
+        func_of_freq,
+        mode_idx=None,
+        ns=np.linspace(1,10, 10),
+        take_conjugate=False):
+
+        _script_d = self.script_d[mode_idx]
+        _hbar_omega_0 = self.hbar_omega_0[mode_idx]
+        _hbar_gamma = self.hbar_gamma[mode_idx]
+
+        return correlation_fun_root(
+            func_of_freq,
+            script_d=_script_d,
+            omega_q=_hbar_omega_0/hbar,
+            gamma=_hbar_gamma/hbar,
+            T=self.T,
+            ns=ns,
+            take_conjugate=take_conjugate,
+            )
+
+
+    def g(self,
+        t,
+        mode_idx=None,
+        ns=np.linspace(1,10, 10),
+        ):
+
+        if mode_idx is not None:
+            _script_d = self.script_d[mode_idx]
+            _hbar_omega_0 = self.hbar_omega_0[mode_idx]
+            _hbar_gamma = self.hbar_gamma[mode_idx]
+
+            _g = g(
+                t,
+                script_d=_script_d,
+                omega_q=_hbar_omega_0/hbar,
+                gamma=_hbar_gamma/hbar,
+                T=self.T,
+                ns=ns,
+                )
+
+        if mode_idx is None:
+
+            _g = np.zeros(t.shape, dtype='complex')
+            ## Iterate through vibrational modes and sum g_i
+            for i in range(self.num_vib_modes):
+
+                _script_d = self.script_d[i]
+                _hbar_omega_0 = self.hbar_omega_0[i]
+                _hbar_gamma = self.hbar_gamma[i]
+
+                _g += g(
+                    t,
+                    script_d=_script_d,
+                    omega_q=_hbar_omega_0/hbar,
+                    gamma=_hbar_gamma/hbar,
+                    T=self.T,
+                    ns=ns,
+                    )
+
+        return _g
+
+
+    def _lineshape(
+        self,
+        omega,
+        which_lineshape=None,
+        mode_idx=None,
+        t_bound=5,
+        t_points=100,
+        return_integrand=False,
+        **kwargs):
+        """ Absorption spectrum computed by integral over
+
+                e^(i w t - g(t))
+
+            where g(t) is the linebroadening function defined as the double
+            time integral over the correlation function of the dipole
+            operator.
+
+
+            Args:
+
+                t is in femptoseconds for g(t)
+
+            """
+        if (
+            (which_lineshape is not "emission")
+            and
+            (which_lineshape is not "absorption")
+            ):
+            raise ValueError(
+                "Must set arg 'which_lineshape' to 'emission' or 'absorption'."
+                )
+
+
+        ## Shift frequency by the average
+        omega_eg = self.omega_eg(mode_idx)
+        omega_m_omega_eq = omega - omega_eg
+
+        ## generate time domain for integration
+        t = np.linspace(0, t_bound, t_points)
+
+        ## Define g depending on mode index
+        _g = self.g(
+            t, mode_idx=mode_idx, **kwargs)
+
+        ## Set varibles specific to emission
+        if which_lineshape is 'emission':
+
+            ## Shift spectrum to other side of symmetry point (omega_eg^0)
+            lamb = omega_eg - self.hbar_omega_eg_0/hbar
+            omega_m_omega_eq += 2*lamb
+
+            ## take complex conjugate of linebroading function
+            _g = np.conj(_g)
+
+        def integrand(t, omega=omega):
+
+            if type(omega_m_omega_eq) is np.ndarray:
+                return np.pi**-1 * np.real(
+                    np.exp(
+                        (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
+                        -
+                        _g)
+                    )
+
+            else:
+                return np.pi**-1 * np.real(
+                    np.exp(1j*(omega_m_omega_eq)*t*1e-15 - _g))
+
+
+        if return_integrand:
+            result = [t, integrand(t)]
+
+        else:
+             ## integrate last dimension of array (time)
+            integral = inte.trapz(integrand(t), t, axis=-1)
+            result = integral
+
+        return (result)
+
+    def emission_lineshape(
+        self,
+        omega,
+        mode_idx=None,
+        t_bound=5,
+        t_points=100,
+        return_integrand=False,
+        **kwargs):
+
+        return self._lineshape(
+            omega,
+            which_lineshape='emission',
+            mode_idx=mode_idx,
+            t_bound=t_bound,
+            t_points=t_points,
+            return_integrand=return_integrand,
+            **kwargs)
+
+    def absorption_lineshape(
+        self,
+        omega,
+        mode_idx=None,
+        t_bound=5,
+        t_points=100,
+        return_integrand=False,
+        **kwargs):
+
+        return self._lineshape(
+            omega,
+            which_lineshape='absorption',
+            mode_idx=mode_idx,
+            t_bound=t_bound,
+            t_points=t_points,
+            return_integrand=return_integrand,
+            **kwargs)
+
+
+
 
 
 

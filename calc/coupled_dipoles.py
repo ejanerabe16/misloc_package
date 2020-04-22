@@ -825,6 +825,65 @@ def dipole_mags_gened(
 
 
 
+def plas_dip_driven_by_mol(
+    mol_angle,
+    plas_angle,
+    d_col,
+    mol_dipole_mag,
+    E_d_angle=None,
+    drive_hbar_w=None,
+    alpha1_diag=None,
+    n_b=None,
+    drive_amp=1,
+    ):
+    """ Calculate dipole magnitudes with generalized dyadic
+        polarizabilities.
+
+        Returns dipole moment vecotrs as rows in array of shape
+        (# of seperations, 3).
+        """
+
+    # Initialize unit vector for molecule dipole in lab frame
+    phi_0 = mol_angle ## angle of bf_p0 in lab frame
+
+    # Initialize unit vecotr for molecule dipole in lab frame
+    phi_1 = plas_angle ## angle of bf_p1 in lab frame
+
+    if E_d_angle == None:
+        E_d_angle = mol_angle
+    # rotate driving field into lab frame
+    E_drive = rotation_by(E_d_angle) @ np.array([1,0,0])*drive_amp
+
+    ## Build 3D molecule dipole moments
+    if mol_dipole_mag.ndim is not 1:
+        raise TypeError(f"'mol_dipole_mag' is not dimension 1\n"+
+            f"mol_dipole_mag.ndim = {mol_dipole_mag.ndim}")
+
+    num_dips_for_calc = len(mol_dipole_mag)
+
+    ## Creat diagonal polarizability for molecule
+    alpha0_diag = np.zeros((num_dips_for_calc, 3, 3), dtype=np.complex_)
+    alpha0_diag[..., 0, 0] = mol_dipole_mag/drive_amp
+    ## Rotate molecule dipoles according to given angle
+    alpha_0 = rotation_by(-phi_0) @ alpha0_diag @ rotation_by(phi_0)
+
+    ## Rotate plasmon polarizability by given angle
+    alpha_1 = rotation_by(-phi_1) @ alpha1_diag @ rotation_by(phi_1)
+
+    ## Build coupling tensor
+    G_d = G(drive_hbar_w, d_col, n_b)
+
+    geometric_coupling_01 = np.linalg.inv(
+        np.identity(3) - alpha_0 @ G_d @ alpha_1 @ G_d
+        )
+
+    p0 = np.einsum('...ij,...j->...i',alpha_0, E_drive)
+    p1 = np.einsum('...ij,...j->...i',alpha_1 @ G_d, p0)
+
+    return [p0, p1]
+
+
+
 ### older stuff in terms of effective masses and whatnot...
 def rotation_by(by_angle):
     ''' need to vectorize '''
@@ -1003,7 +1062,6 @@ def sigma_scat_coupled(
 
     G_d = G(drive_hbar_w, d_col, n_b)
 
-
     interference_term = np.sum((
         np.imag(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)))
         +
@@ -1023,17 +1081,11 @@ def sigma_scat_coupled(
             diag_term_1
             )
         )
-    # print(f'max(G) = {G_d.max()}')
-    # print(f'k**3 = {np.max(k**3)}')
-    # print(f"G dot p max{np.conj(np.einsum('...ij,...j->...i', G_d, p_1)).max()}")
-    # print(f"p dot g dot p max{np.linalg.norm(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)), axis=1).max()}")
-    # print(f"p dot g dot p min{np.linalg.norm(p_0 * np.conj(np.einsum('...ij,...j->...i', G_d, p_1)), axis=1).min()}")
-    # print(f'p_0= {p_0}')
-    # print(p dot g dot p norm)
 
     return [sigma, np.array(
         [interference_term, diag_term_0, diag_term_1,]
         )*(4 * np.pi * k  / np.abs(E_0)**2.)]
+
 
 def dipole_moments_per_omega(
     mol_angle,
