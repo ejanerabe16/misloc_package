@@ -14,7 +14,11 @@ def rho(x, y):
     return ( x**2. + y**2. )**0.5
 
 def E_field(dipole_orientation_angle, xi, y, k):
-    '''defines electric field polarized along dipole axis'''
+    """ Defines the analytics approximation to the focused and
+        diffracted field for dipole oriented in the
+        focal plane at an angle 'dipole_orientation_angle' from the
+        x-axis
+        """
     # print('inside anal_foc_diff_fields.E_field, \n',
     #     'xi.shape = ',xi.shape,'\n',
     #     'y.shape = ',y.shape,
