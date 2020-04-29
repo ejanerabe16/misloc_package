@@ -1,5 +1,5 @@
 fluorophore:
-  extinction_coeff: 200000.0
+  extinction_coeff: 200000.0 ## 198000 from lumiprobe
   lifetime: 3.8e-09
   mass_gamma: 0.075
   res_energy: 1.86 ## long mode peak
