@@ -513,20 +513,19 @@ class mol_fluo_model(object):
 
     def _correlation_fun_root(self,
         func_of_freq,
-        mode_idx=None,
-        ns=np.linspace(1,10, 10),
+        script_d,
+        omega_q,
+        gamma,
+        T,
+        ns=np.linspace(1, 10, 10),
         take_conjugate=False):
 
-        _script_d = self.script_d[mode_idx]
-        _hbar_omega_0 = self.hbar_omega_0[mode_idx]
-        _hbar_gamma = self.hbar_gamma[mode_idx]
-
         return correlation_fun_root(
-            func_of_freq,
-            script_d=_script_d,
-            omega_q=_hbar_omega_0/hbar,
-            gamma=_hbar_gamma/hbar,
-            T=self.T,
+            func_of_freq=func_of_freq,
+            script_d=script_d,
+            omega_q=omega_q,
+            gamma=gamma,
+            T=T,
             ns=ns,
             take_conjugate=take_conjugate,
             )
@@ -538,12 +537,30 @@ class mol_fluo_model(object):
         ns=np.linspace(1,10, 10),
         ):
 
+        def single_mode_g(t, script_d, omega_q, gamma, T, ns):
+
+            t = t*1e-15
+
+            def dub_t_int_exp_iphi(p):
+                return (np.exp(-p*t) + p*t - 1)/p**2.
+
+            goft = self._correlation_fun_root(
+                dub_t_int_exp_iphi,
+                script_d=script_d,
+                omega_q=omega_q,
+                gamma=gamma,
+                T=T,
+                ns=ns
+                )
+
+            return goft
+
         if mode_idx is not None:
             _script_d = self.script_d[mode_idx]
             _hbar_omega_0 = self.hbar_omega_0[mode_idx]
             _hbar_gamma = self.hbar_gamma[mode_idx]
 
-            _g = g(
+            _g = single_mode_g(
                 t,
                 script_d=_script_d,
                 omega_q=_hbar_omega_0/hbar,
@@ -562,7 +579,7 @@ class mol_fluo_model(object):
                 _hbar_omega_0 = self.hbar_omega_0[i]
                 _hbar_gamma = self.hbar_gamma[i]
 
-                _g += g(
+                _g += single_mode_g(
                     t,
                     script_d=_script_d,
                     omega_q=_hbar_omega_0/hbar,
@@ -628,20 +645,9 @@ class mol_fluo_model(object):
             ## take complex conjugate of linebroading function
             _g = np.conj(_g)
 
-        def integrand(t, omega=omega):
-
-            if type(omega_m_omega_eq) is np.ndarray:
-                return np.pi**-1 * np.real(
-                    np.exp(
-                        (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
-                        -
-                        _g)
-                    )
-
-            else:
-                return np.pi**-1 * np.real(
-                    np.exp(1j*(omega_m_omega_eq)*t*1e-15 - _g))
-
+        ## Get integrand from method
+        def integrand(t):
+            return self._integrand(t, omega_m_omega_eq, _g)
 
         if return_integrand:
             result = [t, integrand(t)]
@@ -652,6 +658,23 @@ class mol_fluo_model(object):
             result = integral
 
         return (result)
+
+    def _integrand(self,
+        t,
+        omega_m_omega_eq,
+        g):
+
+        if type(omega_m_omega_eq) is np.ndarray:
+            return np.pi**-1 * np.real(
+                np.exp(
+                    (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
+                    -
+                    g)
+                )
+
+        else:
+            return np.pi**-1 * np.real(
+                np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g))
 
     def emission_lineshape(
         self,
@@ -690,8 +713,102 @@ class mol_fluo_model(object):
             **kwargs)
 
 
+class anda_mol_fluo_model(mol_fluo_model):
 
+    def __init__(self,
+        num_vib_modes,
+        hbar_omega_eg_0,
+        script_d,
+        hbar_omega_0,
+        hbar_gamma,
+        T,):
+        """ This model is a simplified version of the version from
+            Mukamel where the damping is inserted phenominalogically
+            by multiplying the single frequecy linear response frunction
+            by e^(gamma t) at the level of the Fourier Transform.
 
+            Multimode displaced oscillator model from Mukamel with
+            coupling to bath.
+
+            Args:
+                num_vib_modes: type int. Number of vibrational modes.
+                    Used to check other args for consistent numbers of
+                    parameters.
+                hbar_omega_eg_0: type(float). Zero point energy shared
+                    by all vibrational modes.
+                script_d: type(array of length 'num_vib_modes').
+                    Displacement of equalibrium position of vibrational
+                    mode in the electronic excited state.
+                hbar_omega_0: type(array of length 'num_vib_modes').
+                    Vibrational frequency of the uncoupled modes.
+                hbar_gamma: type(array of length 'num_vib_modes').
+                    Effective damping resulting from coupling to bath.
+                T: type(float). Absolute temperature.
+            """
+        mol_fluo_model.__init__(self,
+            num_vib_modes,
+            hbar_omega_eg_0,
+            script_d,
+            hbar_omega_0,
+            hbar_gamma,
+            T)
+
+        ## Make sure gamma is an number and that all gammas given are
+        ## the same.
+        if (type(hbar_gamma) is np.ndarray) or type(hbar_gamma) is list:
+            if np.all(np.asarray(hbar_gamma) != hbar_gamma[0]):
+                raise ValueError("All values of gamma must be the same")
+
+    ## Redefine the correlation function to that with no bath coupling
+    def _correlation_fun_root(self,
+        func_of_freq,
+        script_d,
+        omega_q,
+        gamma,
+        T,
+        ns=np.linspace(1, 10, 10),
+        take_conjugate=False):
+
+        beta = 1/(kb*T)
+
+        n_bar = (np.exp(beta*hbar*omega_q) - 1)**(-1)
+
+        coft = (script_d**2 * omega_q**2. / 2)*(
+            (n_bar+1)*func_of_freq(-omega_q)
+            +
+            n_bar*func_of_freq(omega_q)
+            )
+
+        return coft
+
+    ## Multiply inegrand of fourier transform by the decaying exponential
+    def _integrand(self,
+        t,
+        omega_m_omega_eq,
+        g):
+
+        gamma = np.asarray(self.hbar_gamma)/hbar
+        if (type(self.hbar_gamma) is np.ndarray) or (type(self.hbar_gamma) is list):
+            gamma = gamma[0]
+
+        if type(omega_m_omega_eq) is np.ndarray:
+            return np.pi**-1 * np.real(
+                np.exp(
+                    (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
+                    -
+                    g)
+                *
+                np.exp(
+                    (-gamma*t[None, :]*1e-15))
+                )
+
+        else:
+            return np.pi**-1 * np.real(
+                np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g)
+                *
+                np.exp(
+                    (-gamma*t[None, :]*1e-15))
+                )
 
 
 
