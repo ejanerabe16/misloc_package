@@ -15,6 +15,7 @@ Stopped updating notes when I started using git.
 import scipy.special as spl
 
 from misloc_mispol_package import project_path
+from misloc_mispol_package.optics import anal_foc_diff_fields as aff
 
 parameter_files_path = (
     project_path + '/param'
@@ -883,7 +884,6 @@ def plas_dip_driven_by_mol(
     return [p0, p1]
 
 
-
 ### older stuff in terms of effective masses and whatnot...
 def rotation_by(by_angle):
     ''' need to vectorize '''
@@ -969,6 +969,7 @@ def uncoupled_p0(
     E_d_angle=None,
     alpha_0_p0=None,
     drive_amp=None,
+    return_polarizability_tensor=False,
     ):
 
     phi_0 = mol_angle ## angle of bf_p0
@@ -986,7 +987,10 @@ def uncoupled_p0(
 
     p0_unc = np.einsum('...ij,...j->...i', alpha_0, E_drive)
 
-    return [p0_unc]
+    if return_polarizability_tensor:
+        return [p0_unc, alpha_0]
+    else:
+        return [p0_unc]
 
 # def uncoupled_p1(plas_angle, E_d_angle=None,
 #     drive_hbar_w=parameters['general']['drive_energy']
@@ -1042,6 +1046,39 @@ def uncoupled_p0(
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
+def dipole_moments_per_omega(
+    mol_angle,
+    plas_angle,
+    d,
+    E_d_angle=None,
+    drive_hbar_w=None,
+    alpha0_diag_of_omega=None,
+    alpha1_diag_of_omega=None,
+    n_b=None,
+    drive_amp=None
+    ):
+    """ Computes dipole moments when only molecule dipole is driven
+        """
+
+    d_col = np.asarray(d).reshape((1, 3))
+
+    alpha0_diag = alpha0_diag_of_omega(drive_hbar_w/hbar)
+    alpha1_diag = alpha1_diag_of_omega(drive_hbar_w/hbar)
+
+    p_0, p_1 = dipole_mags_gened(mol_angle,
+        plas_angle,
+        d_col,
+        # E_d_angle=None,
+        drive_hbar_w=drive_hbar_w,
+        alpha0_diag=alpha0_diag,
+        alpha1_diag=alpha1_diag,
+        n_b=n_b,
+        drive_amp=drive_amp
+        )
+
+    return p_0, p_1
+
+
 def sigma_scat_coupled(
     dipoles_moments_per_omega,
     d_col,
@@ -1080,42 +1117,368 @@ def sigma_scat_coupled(
             +
             diag_term_1
             )
-        )
+        )/n_b
 
     return [sigma, np.array(
         [interference_term, diag_term_0, diag_term_1,]
-        )*(4 * np.pi * k  / np.abs(E_0)**2.)]
+        )*(4 * np.pi * k  / (n_b*np.abs(E_0)**2.))]
 
 
-def dipole_moments_per_omega(
+def sigma_abs_coupled(
     mol_angle,
     plas_angle,
-    d,
+    d_col,
     E_d_angle=None,
     drive_hbar_w=None,
-    alpha0_diag_of_omega=None,
-    alpha1_diag_of_omega=None,
+    alpha0_diag=None,
+    alpha1_diag=None,
     n_b=None,
-    drive_amp=None
+    drive_amp=None,
     ):
+    """ Returns absorption crossection for two coupled dipoles with
+        arguments similar to the coupled dipole formalism used
+        elsewhere in this module.
 
-    d_col = np.asarray(d).reshape((1, 3))
+        Returns: List
+            List[0] : coupled absorption crossection
+            List[1:3] : first dipole contribution
+            List[3:5] : second dipole contribution
+        """
 
-    alpha0_diag = alpha0_diag_of_omega(drive_hbar_w/hbar)
-    alpha1_diag = alpha1_diag_of_omega(drive_hbar_w/hbar)
 
-    p_0, p_1 = dipole_mags_gened(mol_angle,
+    omega = drive_hbar_w/hbar
+    k = omega * n_b / c
+
+    p_0, p_1, alpha_0, alpha_1 = coupled_dip_mags_both_driven(
+        mol_angle,
         plas_angle,
         d_col,
-        # E_d_angle=None,
+        E_d_angle=E_d_angle,
         drive_hbar_w=drive_hbar_w,
         alpha0_diag=alpha0_diag,
         alpha1_diag=alpha1_diag,
         n_b=n_b,
-        drive_amp=drive_amp
+        drive_amp=drive_amp,
+        return_polarizabilities=True
         )
 
-    return p_0, p_1
+    alpha_0_inv = np.linalg.inv(alpha_0)
+    alpha_1_inv = np.linalg.inv(alpha_1)
+
+    interference_term_0 = np.sum((
+        np.imag(p_0 * np.conj(np.einsum('...ij,...j->...i', alpha_0_inv, p_0)))
+        # +
+        # np.imag(p_1 * np.conj(np.einsum('...ij,...j->...i', alpha_1_inv, p_1)))
+        ), axis=-1)
+    interference_term_1 = np.sum((
+        # np.imag(p_0 * np.conj(np.einsum('...ij,...j->...i', alpha_0_inv, p_0)))
+        # +
+        np.imag(p_1 * np.conj(np.einsum('...ij,...j->...i', alpha_1_inv, p_1)))
+        ), axis=-1)
+    diag_term_0 = (2 / 3) * k**3 * np.abs(np.linalg.norm( p_0, axis=-1 ))**2.
+    diag_term_1 = (2 / 3) * k**3 * np.abs(np.linalg.norm( p_1, axis=-1 ))**2.
+
+    sigma = (
+        (4 * np.pi * k  / np.abs(drive_amp)**2.)
+        *
+        (
+            interference_term_0
+            +
+            interference_term_1
+            -
+            diag_term_0
+            -
+            diag_term_1
+            )
+        )/n_b
+
+    return [sigma, np.array(
+        [interference_term_0, diag_term_0, interference_term_1, diag_term_1,]
+        )*(4 * np.pi * k  / (n_b*np.abs(drive_amp)**2.))]
+
+
+def single_dip_absorption(
+    mol_angle,
+    E_d_angle=None,
+    alpha_0_p0=None,
+    drive_hbar_w=None,
+    drive_amp=None,
+    n_b=None):
+
+    ## Get dipole moment and polarizability tensor
+    p, alpha = uncoupled_p0(
+        mol_angle,
+        E_d_angle=E_d_angle,
+        alpha_0_p0=alpha_0_p0,
+        drive_amp=drive_amp,
+        return_polarizability_tensor=True,
+        )
+
+    alpha_inv = np.linalg.inv(alpha)
+
+    interference_term = np.sum((
+        np.imag(p * np.conj(np.einsum('...ij,...j->...i', alpha_inv, p)))
+        ), axis=-1)
+
+    omega = drive_hbar_w/hbar
+    k = omega * n_b / c
+
+    diag_term = (2 / 3) * k**3 * np.abs(np.linalg.norm( p, axis=-1 ))**2.
+
+    sigma = (
+        (4 * np.pi * k  / np.abs(drive_amp)**2.)
+        *
+        (
+            interference_term
+            -
+            diag_term
+            )
+        )/n_b
+
+    return sigma
+
+
+def power_absorped(
+    p,
+    alpha,
+    drive_hbar_w=None,
+    drive_amp=None,
+    n_b=None):
+
+    # ## Get dipole moment and polarizability tensor
+    # p, alpha = uncoupled_p0(
+    #     mol_angle,
+    #     E_d_angle=E_d_angle,
+    #     alpha_0_p0=alpha_0_p0,
+    #     drive_amp=drive_amp,
+    #     return_polarizability_tensor=True,
+    #     )
+
+    alpha_inv = np.linalg.inv(alpha)
+
+    interference_term = np.imag(
+        np.einsum(
+            '...j,...j->...',
+            p,
+            (np.conj(np.einsum('...ij,...j->...i', alpha_inv, p)))
+            )
+        )
+
+
+    omega = drive_hbar_w/hbar
+    k = omega * n_b / c
+
+    diag_term = (2 / 3) * k**3 * np.abs(np.linalg.norm( p, axis=-1 ))**2.
+
+    sigma = (
+        (omega/2)
+        *
+        (
+            interference_term
+            -
+            diag_term
+            )
+        )/n_b
+
+    return sigma
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## General coupled dipoles, not neccesarily super res
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def coupled_dip_mags_both_driven(
+    mol_angle,
+    plas_angle,
+    d_col,
+    E_d_angle=None,
+    drive_hbar_w=None,
+    alpha0_diag=None,
+    alpha1_diag=None,
+    n_b=None,
+    drive_amp=None,
+    return_polarizabilities=False,
+    ):
+    """ Calculate dipole magnitudes with generalized dyadic
+        polarizabilities.
+
+        Returns dipole moment vecotrs as rows in array of shape
+        (# of seperations, 3).
+        """
+
+    # Initialize unit vector for molecule dipole in lab frame
+    phi_0 = mol_angle ## angle of bf_p0 in lab frame
+
+    # Initialize unit vecotr for molecule dipole in lab frame
+    phi_1 = plas_angle ## angle of bf_p1 in lab frame
+
+    if E_d_angle == None:
+        E_d_angle = mol_angle
+    # rotate driving field into lab frame
+    E_drive = rotation_by(E_d_angle) @ np.array([1,0,0])*drive_amp
+
+
+    alpha_0_p0 = alpha0_diag
+    alpha_0 = rotation_by(-phi_0) @ alpha_0_p0 @ rotation_by(phi_0)
+
+    alpha_1_p1 = alpha1_diag
+    alpha_1 = rotation_by(-phi_1) @ alpha_1_p1 @ rotation_by(phi_1)
+
+    G_d = G(drive_hbar_w, d_col, n_b)
+
+    geometric_coupling_01 = np.linalg.inv(
+        np.identity(3) - alpha_0 @ G_d @ alpha_1 @ G_d
+        )
+    # print('geometric_coupling_01 = ',geometric_coupling_01)
+    # print('alpha_0 = ',alpha_0)
+    # print('alpha_1 = ',alpha_1)
+    # print('E_drive = ',E_drive)
+
+    p0 = np.einsum(
+        '...ij,...j->...i',
+        geometric_coupling_01 @ (alpha_0 @ (np.identity(3) + G_d @ alpha_1)),
+        E_drive
+        )
+    p1 = np.einsum(
+        '...ij,...j->...i',
+        geometric_coupling_01 @ (alpha_1 @ (np.identity(3) + G_d @ alpha_0)),
+        E_drive
+        )
+
+    if not return_polarizabilities:
+        return [p0, p1]
+    ## If using to compute absorption spectrum,
+    elif return_polarizabilities:
+        return [p0, p1, alpha_0, alpha_1]
+
+
+def coupled_dip_mags_focused_beam(
+    mol_angle,
+    plas_angle,
+    d_col,
+    p0_position,
+    beam_x_positions,
+    E_d_angle=None,
+    drive_hbar_w=None,
+    alpha0_diag=None,
+    alpha1_diag=None,
+    n_b=None,
+    drive_amp=None,
+    return_polarizabilities=False,
+    ):
+    """ Calculate dipole magnitudes with generalized dyadic
+        polarizabilities driven by a focused dipole PSF beam.
+
+        Returns dipole moment vecotrs as rows in array of shape
+        (# of seperations, # of beam positions, 3 cart. coords).
+
+        As with the rest of this module, 'd_col' is expected in shape
+            (number of seperations, 3)
+
+        'p0_positions' is expected in shape
+            (3)
+
+        beam_x_positions is currelty just assuming a 1d slice, so it
+        should be shape
+            (number of points) on the x axis.
+
+        To be consistent with super-res notation, 'mol' dipole is
+        placed at 'p0_position' and seperation vectrs point towards
+        this location from the 'plas' location,
+            p0_location - d_col = p1_location
+        so if we want p0 on the left, d has to be negative.
+        """
+
+    # Initialize unit vector for molecule dipole in lab frame
+    phi_0 = mol_angle ## angle of bf_p0 in lab frame
+
+    # Initialize unit vecotr for molecule dipole in lab frame
+    phi_1 = plas_angle ## angle of bf_p1 in lab frame
+
+    k = drive_hbar_w/hbar / c
+
+    ## Define positions with shape (num_seperations, 3)
+    if p0_position.ndim is 1:
+        p0_position = p0_position[None, :]
+    p1_position = p0_position - d_col
+
+    ## Buld focused beam profile
+    E_0 = aff.E_field(
+        dipole_orientation_angle=E_d_angle,
+        xi=beam_x_positions - p0_position[...,0],
+        y=0,
+        k=k
+        ).T*drive_amp
+    E_1 = aff.E_field(
+        dipole_orientation_angle=E_d_angle,
+        xi=beam_x_positions - p1_position[...,0],
+        y=0,
+        k=k
+        ).T*drive_amp
+
+    alpha_0_p0 = alpha0_diag
+    alpha_0 = rotation_by(-phi_0) @ alpha_0_p0 @ rotation_by(phi_0)
+
+    alpha_1_p1 = alpha1_diag
+    alpha_1 = rotation_by(-phi_1) @ alpha_1_p1 @ rotation_by(phi_1)
+
+    G_d = G(drive_hbar_w, d_col, n_b)
+
+    geometric_coupling_01 = np.linalg.inv(
+        np.identity(3) - alpha_0 @ G_d @ alpha_1 @ G_d
+        )
+    # print('geometric_coupling_01 = ',geometric_coupling_01)
+    # print('alpha_0 = ',alpha_0)
+    # print('alpha_1 = ',alpha_1)
+    # print('E_drive = ',E_drive)
+
+    p0 = (
+        np.einsum(
+            '...ij,...j->...i',
+            geometric_coupling_01 @ alpha_0,
+            E_0
+            )
+        +
+        np.einsum(
+            '...ij,...j->...i',
+            geometric_coupling_01 @ alpha_0 @ G_d @ alpha_1,
+            E_1
+            )
+        )
+    p1 = (
+        np.einsum(
+            '...ij,...j->...i',
+            geometric_coupling_01 @ alpha_1,
+            E_1
+            )
+        +
+        np.einsum(
+            '...ij,...j->...i',
+            geometric_coupling_01 @ alpha_1 @ G_d @ alpha_0,
+            E_0
+            )
+        )
+
+    if not return_polarizabilities:
+        return [p0, p1]
+    ## If using to compute absorption spectrum,
+    elif return_polarizabilities:
+        return [p0, p1, alpha_0, alpha_1]
+
 
 
 
