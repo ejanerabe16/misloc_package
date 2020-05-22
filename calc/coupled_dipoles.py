@@ -1190,11 +1190,11 @@ def sigma_abs_coupled(
             -
             diag_term_1
             )
-        )/n_b
+        )
 
     return [sigma, np.array(
         [interference_term_0, diag_term_0, interference_term_1, diag_term_1,]
-        )*(4 * np.pi * k  / (n_b*np.abs(drive_amp)**2.))]
+        )*(4 * np.pi * k  / (np.abs(drive_amp)**2.))]
 
 
 def single_dip_absorption(
@@ -1233,7 +1233,7 @@ def single_dip_absorption(
             -
             diag_term
             )
-        )/n_b
+        )
 
     return sigma
 
@@ -1278,7 +1278,7 @@ def power_absorped(
             -
             diag_term
             )
-        )/n_b
+        )
 
     return sigma
 
@@ -1409,7 +1409,7 @@ def coupled_dip_mags_focused_beam(
     # Initialize unit vecotr for molecule dipole in lab frame
     phi_1 = plas_angle ## angle of bf_p1 in lab frame
 
-    k = drive_hbar_w/hbar / c
+    k = (drive_hbar_w*n_b/hbar) / c
 
     ## Define positions with shape (num_seperations, 3)
     if p0_position.ndim is 1:
@@ -1430,6 +1430,33 @@ def coupled_dip_mags_focused_beam(
         k=k
         ).T*drive_amp
 
+    ## Normalize fields to correct beam intensity
+    spot_size = 2*np.pi/k
+    spot_space = np.linspace(-spot_size, spot_size, 500)
+    spot_mesh = np.meshgrid(spot_space, spot_space)
+    focal_spot_field = aff.E_field(
+        dipole_orientation_angle=E_d_angle,
+        xi=spot_mesh[0],
+        y=spot_mesh[1],
+        k=k
+        ).T
+    intensity_ofx = c/(8*np.pi) * np.sum(
+        focal_spot_field*np.conj(focal_spot_field), axis=-1)
+
+    area_image = (spot_space.max() - spot_space.min())**2.
+    num_pixels = len(spot_space)**2.
+    area_per_pixel = area_image / num_pixels
+
+    beam_power = np.sum(intensity_ofx)*area_per_pixel
+    ## integral of (c/8pi)|E|^2 dA = beam_power
+    E_0 /= (beam_power)**0.5
+    E_1 /= (beam_power)**0.5
+
+    print(f'np.sum(intensity_ofx) = {np.sum(intensity_ofx)}')
+    print(f'(2*spot_size)**2. = {(2*spot_size)**2.}')
+    print(f'beam_power = {beam_power}')
+
+    ## Rotate polarizabilities into connecting vector frame
     alpha_0_p0 = alpha0_diag
     alpha_0 = rotation_by(-phi_0) @ alpha_0_p0 @ rotation_by(phi_0)
 
