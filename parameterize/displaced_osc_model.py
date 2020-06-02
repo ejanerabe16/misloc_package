@@ -1,8 +1,8 @@
 import numpy as np
 
-from ..calc import BEM_simulation_wrapper as bem
-from ..calc import fitting_misLocalization as fit
-from ..calc import coupled_dipoles as cp
+# from ..calc import BEM_simulation_wrapper as bem
+# from ..calc import fitting_misLocalization as fit
+# from ..calc import coupled_dipoles as cp
 
 import scipy.integrate as inte
 import scipy.io as sio
@@ -665,7 +665,7 @@ class mol_fluo_model(object):
         g):
 
         if type(omega_m_omega_eq) is np.ndarray:
-            return np.pi**-1 * np.real(
+            return 1/2 * np.real(
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -673,7 +673,7 @@ class mol_fluo_model(object):
                 )
 
         else:
-            return np.pi**-1 * np.real(
+            return 1/2 * np.real(
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g))
 
     def emission_lineshape(
