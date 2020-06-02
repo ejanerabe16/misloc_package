@@ -181,6 +181,7 @@ def correlation_fun_root(
             imaginary_unit = -1j
         return coth(imaginary_unit*p*hbar*beta/2)
 
+    ## Original terms,
     goft_terms1and2 = (
         (hbar / (4*zeta)) * (
             (-coth_of_args_and(phi) + 1)*(
@@ -190,6 +191,195 @@ def correlation_fun_root(
                 func_of_freq(phip))
             )
         )
+    ## Try flipping sign,
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Nope, inverted whole spectrum
+    #
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (-coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## This gave nonsense, spectrum no longer converged
+    #
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         -
+    #         (+coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Only a small change.
+    ## Try flipping sign of phi terms,
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         -(-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         -
+    #         (+coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Nope. Cause divergence of the cumulant again.
+    #
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         -(-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Diverged again
+    #
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (-coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (-coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Small change again, try both signs on bottom +
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Hope again! Looks realistic but vary different, try something similar
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Backwards again
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (+coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    ## Ang backwards again
+    #
+    ## Try last configuration with original signs on coth terms
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phip))
+    #         )
+    # #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-1 - coth_of_args_and(phi))*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+1 + coth_of_args_and(phip))*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-1 + coth_of_args_and(phi))*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+1 - coth_of_args_and(phip))*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phip))
+    #         +
+    #         (+coth_of_args_and(phip) - 1)*(
+    #             func_of_freq(phi))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phi))
+    #         +
+    #         (+coth_of_args_and(phi) + 1)*(
+    #             func_of_freq(phip))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phip))
+    #         +
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phi))
+    #         )
+    #     )
+    # goft_terms1and2 = (
+    #     (hbar / (4*zeta)) * (
+    #         (-coth_of_args_and(phi) - 1)*(
+    #             func_of_freq(phip))
+    #         +
+    #         (+coth_of_args_and(phip) + 1)*(
+    #             func_of_freq(phi))
+    #         )
+    #     )
+
 
     ## Handle sum over n differently depending on dimension of t
     if type(nu_n) == np.ndarray:
@@ -209,12 +399,19 @@ def correlation_fun_root(
             axis=0
         )
 
+    # last_term = (
+    #     -
+    #     2*gamma/beta
+    #     *
+    #     sum_over_n
+    #     )
     last_term = (
         -
         2*gamma/beta
         *
         sum_over_n
         )
+
 
     goft = (script_d**2 * omega_q**3. / hbar)*( #xi^2/m
         goft_terms1and2
@@ -684,6 +881,10 @@ class mol_fluo_model(object):
         t_points=100,
         return_integrand=False,
         **kwargs):
+        """ Fourier transforms the dipole self correlation function in
+            the Cumulant expansion. Time bounds for integrals are in
+            units of 1e-15.
+            """
 
         return self._lineshape(
             omega,
@@ -743,6 +944,9 @@ class anda_mol_fluo_model(mol_fluo_model):
                     Vibrational frequency of the uncoupled modes.
                 hbar_gamma: type(array of length 'num_vib_modes').
                     Effective damping resulting from coupling to bath.
+                    BE WARMED THAT THIS MODEL ONLY INTERPRETS THE FIRST
+                    ELEMENT OF THE GAMMA LIST SINCE THE MODEL REQUIRES
+                    IDENTICAL LINEWIDTHS PER VIBRATIONAL MODE.
                 T: type(float). Absolute temperature.
             """
         mol_fluo_model.__init__(self,
@@ -768,15 +972,21 @@ class anda_mol_fluo_model(mol_fluo_model):
         T,
         ns=np.linspace(1, 10, 10),
         take_conjugate=False):
+        """ The generalized 'func_of_freq' are accounts for integration
+            of the complex harmonic time dependence, so terms in the
+            correlation function like
+                e^-iwt -> func_of_freq(1j*omega_q)
+                e^+iwt -> func_of_freq(-1j*omega_q)
+            """
 
         beta = 1/(kb*T)
 
         n_bar = (np.exp(beta*hbar*omega_q) - 1)**(-1)
 
         coft = (script_d**2 * omega_q**2. / 2)*(
-            (n_bar+1)*func_of_freq(-omega_q)
+            (n_bar+1)*func_of_freq(1j*omega_q)
             +
-            n_bar*func_of_freq(omega_q)
+            n_bar*func_of_freq(-1j*omega_q)
             )
 
         return coft
