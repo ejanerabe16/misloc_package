@@ -862,7 +862,9 @@ class mol_fluo_model(object):
         g):
 
         if type(omega_m_omega_eq) is np.ndarray:
-            return np.pi**-1 * np.real(
+            ## Have to replace the (1/pi) prefactor with (1/2) in order to
+            ## get an area normalized result. Don't know why.
+            return 2**-1 * np.real(
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -870,7 +872,7 @@ class mol_fluo_model(object):
                 )
 
         else:
-            return np.pi**-1 * np.real(
+            return 2**-1 * np.real(
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g))
 
     def emission_lineshape(
@@ -998,11 +1000,14 @@ class anda_mol_fluo_model(mol_fluo_model):
         g):
 
         gamma = np.asarray(self.hbar_gamma)/hbar
-        if (type(self.hbar_gamma) is np.ndarray) or (type(self.hbar_gamma) is list):
+        if (type(self.hbar_gamma) is np.ndarray) or (
+            type(self.hbar_gamma) is list):
             gamma = gamma[0]
 
         if type(omega_m_omega_eq) is np.ndarray:
-            return np.pi**-1 * np.real(
+            ## Have to replace the (1/pi) prefactor with (1/2) in order to
+            ## get an area normalized result. Don't know why.
+            return 2**-1 * np.real(
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -1013,7 +1018,7 @@ class anda_mol_fluo_model(mol_fluo_model):
                 )
 
         else:
-            return np.pi**-1 * np.real(
+            return 2**-1 * np.real(
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g)
                 *
                 np.exp(
