@@ -8,7 +8,11 @@ import scipy.integrate as inte
 import scipy.io as sio
 import scipy.optimize as opt
 
+## Dor matrix theorm implementation
+import scipy.linalg as lin
+import scipy.special as spl
 
+## Some physical constants
 import scipy.constants as con
 ## Import physical constants
 hbar = con.physical_constants['Planck constant over 2 pi in eV s'][0]
@@ -1026,4 +1030,531 @@ class anda_mol_fluo_model(mol_fluo_model):
                 )
 
 
+
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def taylor_expm(A, n):
+    e_A = np.identity(A.shape[-1], dtype='complex')
+    if A.ndim is 3:
+        e_A = e_A[None, ...]
+    for i in range(1, n):
+        e_A = e_A + (1/spl.factorial(i))*np.linalg.matrix_power(A, i)
+    return e_A
+
+
+def eigy_expm(A):
+    vals,vects = np.linalg.eig(A)
+    return np.einsum('...ik, ...k, ...kj ->...ij',
+                     vects,np.exp(vals),np.linalg.inv(vects))
+
+def loopy_expm(A):
+    expmA = np.zeros_like(A)
+    for n in range(A.shape[0]):
+        expmA[n,...] = lin.expm(A[n,...])
+    return expmA
+
+def displaced_lambdas(
+    lambda_array,
+    d,
+    include_H0_contri=True):
+    """ Given the polynomial or order n = len('lambda_array')-1
+            lambda_array[0]
+            +
+            lambda_array[1] * x
+            +
+            lambda_array[2] * x**2
+            ...
+            +
+            lambda_array[-1] * x**n
+        this function returns the coefficients upon introducing the
+        displacement
+            x -> x-d
+        """
+    n = len(lambda_array) - 1
+
+    lambda_matrix = np.tri(n+1)
+    lambda_matrix *= np.asarray(lambda_array)[:, None]
+
+    ## For each term in the polynomial, we need to expand the binolial
+    ## and resort coefficients into lambda array.
+    for m in range(0, n+1):
+         for k in range(0, m):
+            lambda_matrix[m, k] *= (
+                spl.factorial(m)/(spl.factorial(k)*spl.factorial(m-k))
+                )*(-d)**(m-k)
+    new_lambdas = np.sum(lambda_matrix, axis=0)
+
+    if include_H0_contri:
+        ## Add contribution from displacing H_0
+        new_lambdas[:2] += [d**2/2, -d]
+
+    return new_lambdas
+
+def displaced_ham_e(self, H_g, zp_energy, d):
+        """ Returns matrix representation of (unitless) nuclear Hamiltonian
+            in the electronic ground state for the general anharmonic
+            oscillator truncated at dimension 'basis_size'.
+
+            The arg 'lambda_array' is expected to be 1D and contains the
+            scalar prefactors at each order of the polynomial potential
+            energy surface. The potential is therefore a polynomial of order
+            len(lambda_array) + 1.
+            """
+        basis_size = H_g.shape[0]
+        a = np.zeros((basis_size, basis_size))
+        for n in range(basis_size-1):
+            a[n, n+1] = np.sqrt(n+1)
+        displacement_op = lin.expm(d*a.T - d*a)
+
+        H_e = (
+            displacement_op @ H_g @ displacement_op.T
+            +
+            zp_energy * np.identity(basis_size)
+            )
+        return H_e
+
+
+class anharmonic_mat_exp_implementation(object):
+    """ Implementation of the generalized solution to the displaced
+        oscillator problem for arbitrary polynomial vibrational energy
+        surfaces in both the ground and excited electronic states.
+        Following the 2016 JCTC by Anda et al. (With some corrections
+        for their cavalier treatment of units).
+
+        Args:
+        ~~~~~
+            poly_prefs_g: (Array of length equal to polynomial order - 1)
+                The prefacters to the perterbing potential surface,
+                notated as lambda in the JCTC. They describe the vibrational
+                potential surface for the electronic ground state minus the
+                harmonic term. They are organized such that the [i] element is
+                the ith order term of the polynomial
+            poly_prefs_e: (same as above)
+                Similarly, these are the lambda prefactors for the vibrational
+                potential in the electronic excited state.
+            basis_size: (int)
+                The number of harmonic oscillator states used to represent the
+                anharmonic eigenstates
+            hbarw0: (float)
+                The oscillatorion energy of the unperterbed harmonic oscillator
+                potential. Any nonzero 'poly_prefs_g[2]' or 'poly_prefs_e[2]'
+                will effectivly shift this value. Because of that subdlty, it
+                is primarily used to dimensionalize/nondimensionalize various
+                quantities like that displacement below.
+            unitless_d: (float)
+                nondimensionalized displacement between the equilibrium
+                positions (minimum) of the vibrational potential energy
+                surfaces of the ground and excited electronic states. For a
+                harmonic system (), It is related to the Huang-Rys factor by
+                    S = unitless_d^2 / 2
+            T: (float)
+                Temperature in Kelvin
+
+        """
+
+    def __init__(self,
+        poly_prefs_g,
+        poly_prefs_e,
+        basis_size,
+        hbarw0,
+        hbar_gamma,
+        unitless_d,
+        T,
+        integration_t_max=20,
+        integration_t_points=600,
+        calc_matricies_on_init=True,
+        A_mat_order=7,
+        ):
+
+        self.poly_prefs_g = poly_prefs_g
+        self.poly_prefs_e = poly_prefs_e
+        self.basis_size = basis_size
+        self.hbarw0 = hbarw0
+        self.hbar_gamma = hbar_gamma
+        self.unitless_d = unitless_d
+        self.T = T
+        self.integration_t_max = integration_t_max
+        self.integration_t_points = integration_t_points
+
+        if calc_matricies_on_init:
+            self.calc_matricies(A_mat_order)
+
+    def calc_matricies(self, A_mat_order):
+
+        ## Ground state not needed for emission outside gap operater
+        # self.H_g = self.vib_ham(self.poly_prefs_g, self.basis_size)
+        self.H_e = self.vib_ham(self.poly_prefs_e, self.basis_size)
+
+        self.Delta = self.gap_fluc_op(
+            basis_size=self.basis_size,
+            lambda_g_array=self.poly_prefs_g,
+            lambda_e_array=self.poly_prefs_e,
+            T=self.T)*self.hbarw0
+
+        self.A_mat_order = A_mat_order
+        self.A = self.a_matrix(self.H_e, self.Delta, order=self.A_mat_order)
+
+        self.rho_e = self.rho(self.H_e, self.T)
+
+
+    def position_operator(self, basis_size=None):
+        """ Returns matrix representation of the position operator in the
+            basis of number states. Truncated at dimension 'basis size'.
+            """
+        if basis_size is None:
+            basis_size = self.basis_size
+
+        x = np.zeros((basis_size, basis_size))
+        for n in range(basis_size-1):
+            x[n, n+1] = 1/2**0.5 * np.sqrt(n+1)
+            x[n+1, n] = 1/2**0.5 * np.sqrt(n+1)
+        return x
+
+    def x_tothe_k(self, k=None, basis_size=None):
+        if k is None:
+            k = self.k
+            if basis_size is None:
+                basis_size = self.basis_size
+        x = self.position_operator(basis_size)
+        return np.linalg.matrix_power(x, k)
+
+    def vib_ham(self, lambda_array, basis_size=None):
+        """ Returns matrix representation of (unitless) nuclear Hamiltonian
+            in the electronic ground state for the general anharmonic
+            oscillator truncated at dimension 'basis_size'.
+
+            The arg 'lambda_array' is expected to be 1D and contains the
+            scalar prefactors at each order of the polynomial potential
+            energy surface. The potential is therefore a polynomial of order
+            len(lambda_array) + 1.
+            """
+        if basis_size is None:
+            basis_size = self.basis_size
+
+        H_prime = np.zeros((basis_size, basis_size))
+        ## Define unperterbed harmonic hamiltonian
+        H_0 = np.diag(np.arange(0, basis_size))
+
+        poly_order_plus_1 = len(lambda_array)
+        for order in range(poly_order_plus_1):
+            H_prime += lambda_array[order]*self.x_tothe_k(order, basis_size)
+
+        H_g = H_0 + H_prime
+    #     H_g -= np.identity(basis_size)*lambda_array[0]
+        return H_g
+
+
+
+    def rho(self, H_e, T=None):
+        if T is None:
+            T = self.T
+        if T is 0:
+            return np.identity(H_e.shape[0])
+        density_matrix_e = lin.expm(-H_e/(kb*T))
+        density_matrix_e /= np.trace(density_matrix_e)
+        return density_matrix_e
+
+
+    def gap_fluc_op(self, basis_size, lambda_g_array, lambda_e_array, T):
+        """ Returns energy gap fluctuation operator """
+        density_matrix_e = self.rho(self.vib_ham(lambda_e_array, basis_size), T=T)
+
+        delta = np.zeros((basis_size, basis_size))
+        for n in range(len(lambda_e_array)):
+            xk = self.x_tothe_k(n, basis_size)
+            delta += (
+                (lambda_g_array[n] - lambda_e_array[n])
+                *
+                (
+                    xk
+                    -
+                    np.identity(basis_size)
+                    *np.trace(xk@density_matrix_e)
+                    )
+                )
+        return delta
+
+
+    def calc_hbar_omega_eg(self, basis_size, lambda_g_array, lambda_e_array, T):
+        density_matrix_e = self.rho(self.vib_ham(lambda_e_array, basis_size), T=T)
+
+        hbar_omega_eg = np.zeros((basis_size, basis_size))
+        for n in range(len(lambda_e_array)):
+            xk = self.x_tothe_k(n, basis_size)
+            hbar_omega_eg += (
+                (lambda_e_array[n] - lambda_g_array[n])
+                *
+                np.trace(xk@density_matrix_e)
+                )
+        return hbar_omega_eg
+
+
+    def a_matrix(self, H_e, Delta, order):
+        miHe = -1j*H_e/hbar
+        A = np.block([
+            [miHe,             Delta,  ],
+            [np.zeros_like(Delta), miHe,]
+            ])
+        for o in range(1, order-1):
+            right_col = np.block([np.zeros_like(Delta)]*o + [Delta]).T
+            bottom_row = np.block([np.zeros_like(Delta)]*(o+1) + [miHe])
+
+            A = np.block([
+                [A, right_col],
+                [bottom_row]
+                ])
+        return A
+
+
+
+
+
+    def big_b_tilde(self,
+        t,
+        order_n,
+        H_e,
+        rho_ex,
+        A=None,
+        e_At=None,
+        return_e_At_in_dict=False):
+
+        """ Return shorthand B_n coefficient from Anda's paper
+                B_n = (i/hbar)^n * Tr{e^-iH_et [e^At]_[N-n, N] * rho_ex}
+            """
+    #     print(f"Inside Bn, t = {t}")
+        if type(t) is np.ndarray:
+            H_e = H_e[None, ...]
+            t = t[:, None, None]
+            if A is not None:
+                A = A[None, ...]
+            exp_func = loopy_expm
+    #         exp_func = lambda a: taylor_expm(a, 100)
+        else:
+            exp_func = lin.expm
+    #     print(f"Shape of H_e inside B_n = {H_e.shape}")
+    #     print(f"Shape of A inside B_n = {A.shape}")
+
+        ## First step compute matrix exponentials at time t
+        e_iHet = exp_func(1j*H_e*t/hbar)
+    #     print(f"e_iHet = {e_iHet}")
+        if A is not None:
+            e_At = exp_func(A*t)
+
+    #     print(f"e_At = {e_At}")
+        ## Navigate block array
+        block_size = H_e.shape[-1]
+
+        N = round(e_At.shape[-1]/block_size)
+    #     print(f" A block indexed from {(N-order_n-1)} to {N-order_n}")
+        Bn_array = (
+            (
+                -1j
+                /
+                hbar
+                )**order_n
+            *
+            e_iHet
+            @
+            e_At[
+                ...,
+                (N-order_n-1)*block_size:(N-order_n)*block_size,
+                (N-1)*block_size:
+                ]
+            @
+            rho_ex
+            )
+        Bn = np.trace(Bn_array, axis1=-2, axis2=-1)
+        if return_e_At_in_dict:
+            return {'B_n':Bn, 'e_At':e_At}
+        return Bn
+
+
+    def _flu_lineshape(
+        self,
+        omega,
+        gamma,
+        H_e,
+        rho_ex,
+        A,
+        t_max=1000,
+        t_points=100,
+        return_integrand=False):
+        """ Implement equation 31 from Anda without plugged in class instance attributes """
+
+        def integrand(_t):
+            B_2_dict = self.big_b_tilde(
+                _t,
+                order_n=2,
+                H_e=H_e,
+                rho_ex=rho_ex,
+                A=A,
+                e_At=None,
+                return_e_At_in_dict=True)
+            B_2 = B_2_dict['B_n']
+            e_At = B_2_dict['e_At']
+    #         print(f"e_At = {e_At}")
+            B_3 = self.big_b_tilde(
+                _t,
+                order_n=3,
+                H_e=H_e,
+                rho_ex=rho_ex,
+    #             A = A,
+                e_At=e_At,
+                )
+            B_4 = self.big_b_tilde(
+                _t,
+                order_n=4,
+                H_e=H_e,
+                rho_ex=rho_ex,
+                e_At=e_At,)
+            B_5 = self.big_b_tilde(
+                _t,
+                order_n=5,
+                H_e=H_e,
+                rho_ex=rho_ex,
+                e_At=e_At,)
+            B_6 = self.big_b_tilde(
+                _t,
+                order_n=6,
+                H_e=H_e,
+                rho_ex=rho_ex,
+                e_At=e_At,)
+    #         print(f"B_2 = {B_2}")
+    #         print(f"B_3 = {B_3}")
+            exp_arg = (
+                B_2
+                +
+                B_3
+                ## Stop here fore 3rd order Cum. expansion
+                +
+                B_4
+                -
+                (B_2**2)/2
+                ## Stop here for 4th order Cum. expansion
+                +
+                B_5
+                -
+                B_2*B_3
+                ## Stope here fore 5th order Cum. expansion
+                +
+                B_6
+                -
+                B_2*B_4
+                -
+                (B_3**2)/2
+                +
+                (B_2**3)/3
+                )
+
+            ## Return integrand with time on last dimensions and omegas on
+            ## first.
+    #         print(f"omega = {omega}")
+    #         print(f"gamma = {gamma}")
+    #         print(f"_t = {_t}")
+    #         print(f"exp_arg = {exp_arg}")
+            _integrand = np.real(
+                np.exp(
+                    (-1j*omega[:, None] - gamma)*_t[None, :]
+                    +
+                    exp_arg[None, :])
+                    )
+    #         print(f"integrand = {_integrand}")
+            return _integrand
+
+        ## Build t vector
+        ts = np.linspace(0, t_max, t_points)*1e-15
+
+        if return_integrand:
+            return (ts, integrand(ts))
+        ## Integrate with trapazoid rule
+        integral = inte.trapz(integrand(ts), ts, axis=-1)
+
+        ## Integrate with scipy quadriture function
+    #     integral = integ.quad(integrand, 0, t_max*1e-15
+        ## Integrate by direct Rieman sum
+    #     integral = np.zeros(len(omega))
+    #     for t in ts:
+    #         integral += integrand(t)
+    #     integral *= ts[1]-ts[0]
+        return integral/(2*np.pi*hbar)
+
+    def emission_lineshape(self,
+        hbar_omegas,
+        return_integrand=False):
+        """ Implement equation 31 from Anda with parameters taken from
+            class instance attributes """
+        return self._flu_lineshape(
+            omega=hbar_omegas/hbar,
+            gamma=self.hbar_gamma/hbar,
+            H_e=self.H_e,
+            rho_ex=self.rho_e,
+            A=self.A,
+            t_max=self.integration_t_max,
+            t_points=self.integration_t_points,
+            return_integrand=return_integrand)
+
+
+    ## Example usage from notebook
+    # mor_lam_g = [
+    #     0,
+    #     0,
+    #     0.500141 - .5, ## to account for H_0
+    #     - 0.0456629,
+    #     0.00243193,
+    #     - 0.000095158,
+    #     2.99251*1e-6,
+    #     - 7.93207*1e-8,
+    #     + 1.82486*1e-9,
+    #     - 3.71702*1e-11,
+    #     6.80059*1e-13,
+    #     - 1.13*1e-14,
+    #     + 1.72033*1e-16,
+    #     ]
+
+    # ## Number of oscillator states used for representation of general
+    # ## potential energy eigenstates
+    # basis_size = 20
+    # ## Energy spacing of unperterbed vibration
+    # hbarw0_mor = 1
+    # ##
+    # unitless_d = 1.6
+    # ## Build excited state lambdas from ground state and displacement
+    # mor_lam_e = displaced_lambdas(mor_lam_g, d=unitless_d)
+
+    # ## Define Vibrational Hamiltonians in units of energy (by multiplying by
+    # ## the unperturbed vibrational energy spacing).
+    # ## -----
+    # ## Vibrational Hamiltonian in the electronic ground state
+    # Hg_mor = vib_ham(mor_lam_g,basis_size,)*hbarw0_mor
+    # ## Vibrational Hamiltonian in the electronic excited state
+    # He_mor = vib_ham(mor_lam_e,basis_size,)*hbarw0_mor
+
+    # ## Assign the temperature
+    # T_mor = .3*hbarw0_mor/k
+    # ## Define the Energy Gap fluctuation operator (in units of energy as for
+    # ## the vibrational Hamiltonians above)
+    # D_mor = gap_fluc_op(basis_size, mor_lam_g, mor_lam_e, T_mor)*hbarw0_mor
+    # ## Define the A matrix for use in the matrix eponential theorm used to
+    # ## calculate the Cumulants.
+    # A_mor = a_matrix(He_mor, D_mor, order=7)
+    # ## Define density matrix from operators already define.
+    # rho_mor = rho_e(He_mor, T_mor)
+
+    # ## Plot
+    # hbar_omegas_mor = np.linspace(-5, 5, 400)
+    # lineshape_mor = flu_lineshape(
+    #     omega=hbar_omegas_mor/hbar,
+    #     gamma=.18/hbar,
+    #     H_e=He_mor,
+    #     rho_ex=rho_mor,
+    #     A=A_mor,
+    #     t_max=20,
+    #     t_points=600,
+    # #     return_integrand=True
+    #     )
+    # plt.plot(hbar_omegas_mor-unitless_d**2./2, lineshape_mor)
+    # plt.axvline(lw=1, ls='--', c='k')
+
+    # plt.xlabel(r'$\frac{\omega - \omega_{eg}}{\omega_0}$', fontsize=10)
+    # plt.ylabel(r'Emission Lineshape [a.u.]', fontsize=10)
 
