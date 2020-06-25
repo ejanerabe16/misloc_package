@@ -868,7 +868,7 @@ class mol_fluo_model(object):
         if type(omega_m_omega_eq) is np.ndarray:
             ## Have to replace the (1/pi) prefactor with (1/2) in order to
             ## get an area normalized result. Don't know why.
-            return 2**-1 * np.real(
+            return (1/2) * np.real(
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -876,7 +876,7 @@ class mol_fluo_model(object):
                 )
 
         else:
-            return 2**-1 * np.real(
+            return (1/2) * np.real(
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g))
 
     def emission_lineshape(
@@ -1032,7 +1032,24 @@ class anda_mol_fluo_model(mol_fluo_model):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Anharmonic implementation from Anda's 2016 JCTC
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 def taylor_expm(A, n):
     e_A = np.identity(A.shape[-1], dtype='complex')
     if A.ndim is 3:
@@ -1113,6 +1130,16 @@ def displaced_ham_e(self, H_g, zp_energy, d):
             )
         return H_e
 
+def poly_from_lambdas(x, lambdas):
+
+    y = np.zeros_like(x)
+    for i, lam in enumerate(lambdas):
+        y += lam * x**i
+    ## Add back in harmonic piece
+    y += x**2/2
+
+    return y
+
 
 class anharmonic_mat_exp_implementation(object):
     """ Implementation of the generalized solution to the displaced
@@ -1176,24 +1203,40 @@ class anharmonic_mat_exp_implementation(object):
         self.integration_t_max = integration_t_max
         self.integration_t_points = integration_t_points
 
+        ## Calculate 0-0 transition energy for fixing mysterios spectral offset
+        self.hbar_omega_eg = self.calc_hbar_omega_eg(
+            basis_size=self.basis_size,
+            lambda_g_array=self.poly_prefs_g,
+            lambda_e_array=self.poly_prefs_e,
+            T=self.T
+            )
+
         if calc_matricies_on_init:
             self.calc_matricies(A_mat_order)
 
     def calc_matricies(self, A_mat_order):
 
-        ## Ground state not needed for emission outside gap operater
-        # self.H_g = self.vib_ham(self.poly_prefs_g, self.basis_size)
-        self.H_e = self.vib_ham(self.poly_prefs_e, self.basis_size)
+        self.H_g = (
+            self.vib_ham(self.poly_prefs_e, self.basis_size)
+            *self.hbarw0
+            )
+
+        self.H_e = (
+            self.vib_ham(self.poly_prefs_e, self.basis_size)
+            *self.hbarw0
+            )
 
         self.Delta = self.gap_fluc_op(
             basis_size=self.basis_size,
             lambda_g_array=self.poly_prefs_g,
             lambda_e_array=self.poly_prefs_e,
-            T=self.T)*self.hbarw0
+            T=self.T
+            )*self.hbarw0
 
         self.A_mat_order = A_mat_order
         self.A = self.a_matrix(self.H_e, self.Delta, order=self.A_mat_order)
 
+        self.rho_g = self.rho(self.H_g, self.T)
         self.rho_e = self.rho(self.H_e, self.T)
 
 
@@ -1244,7 +1287,6 @@ class anharmonic_mat_exp_implementation(object):
         return H_g
 
 
-
     def rho(self, H_e, T=None):
         if T is None:
             T = self.T
@@ -1276,15 +1318,15 @@ class anharmonic_mat_exp_implementation(object):
 
 
     def calc_hbar_omega_eg(self, basis_size, lambda_g_array, lambda_e_array, T):
-        density_matrix_e = self.rho(self.vib_ham(lambda_e_array, basis_size), T=T)
+        density_matrix_g = self.rho(self.vib_ham(lambda_g_array, basis_size), T=T)
 
-        hbar_omega_eg = np.zeros((basis_size, basis_size))
+        hbar_omega_eg = 0
         for n in range(len(lambda_e_array)):
             xk = self.x_tothe_k(n, basis_size)
             hbar_omega_eg += (
                 (lambda_e_array[n] - lambda_g_array[n])
                 *
-                np.trace(xk@density_matrix_e)
+                -np.trace(xk@density_matrix_g)
                 )
         return hbar_omega_eg
 
@@ -1369,6 +1411,97 @@ class anharmonic_mat_exp_implementation(object):
         return Bn
 
 
+    def sum_of_cumulants(self, _t, H_e, rho_ex, A):
+        """ Returns sum of Cumulants calculates using the matrix theorm implemetation """
+        B_2_dict = self.big_b_tilde(
+                _t,
+                order_n=2,
+                H_e=H_e,
+                rho_ex=rho_ex,
+                A=A,
+                e_At=None,
+                return_e_At_in_dict=True)
+        B_2 = B_2_dict['B_n']
+        e_At = B_2_dict['e_At']
+#         print(f"e_At = {e_At}")
+        B_3 = self.big_b_tilde(
+            _t,
+            order_n=3,
+            H_e=H_e,
+            rho_ex=rho_ex,
+#             A = A,
+            e_At=e_At,
+            )
+        B_4 = self.big_b_tilde(
+            _t,
+            order_n=4,
+            H_e=H_e,
+            rho_ex=rho_ex,
+            e_At=e_At,)
+        B_5 = self.big_b_tilde(
+            _t,
+            order_n=5,
+            H_e=H_e,
+            rho_ex=rho_ex,
+            e_At=e_At,)
+        B_6 = self.big_b_tilde(
+            _t,
+            order_n=6,
+            H_e=H_e,
+            rho_ex=rho_ex,
+            e_At=e_At,)
+#         print(f"B_2 = {B_2}")
+#         print(f"B_3 = {B_3}")
+        exp_arg = (
+            B_2
+            +
+            B_3
+            ## Stop here fore 3rd order Cum. expansion
+            +
+            B_4
+            -
+            (B_2**2)/2
+            ## Stop here for 4th order Cum. expansion
+            +
+            B_5
+            -
+            B_2*B_3
+            ## Stope here fore 5th order Cum. expansion
+            +
+            B_6
+            -
+            B_2*B_4
+            -
+            (B_3**2)/2
+            +
+            (B_2**3)/3
+            )
+
+        return exp_arg
+
+
+    def integrand(self, _t, omega, gamma, H_e, rho_ex, A, which_linespace='emission'):
+
+        exp_arg = self.sum_of_cumulants(_t, H_e, rho_ex, A)
+
+        ## Return integrand with time on last dimensions and omegas on
+        ## first.
+        if which_linespace == 'emission':
+            omega += self.hbar_omega_eg
+        elif which_linespace == 'absorption':
+            omega -= self.hbar_omega_eg
+        else:
+            raise ValueError("which_linespace arg must specify 'absorption' or 'emission'")
+
+        _integrand = np.real(
+            np.exp(
+                (-1j*omega[:, None] - gamma)*_t[None, :]
+                +
+                exp_arg[None, :])
+                )
+    #         print(f"integrand = {_integrand}")
+        return _integrand
+
     def _flu_lineshape(
         self,
         omega,
@@ -1381,93 +1514,13 @@ class anharmonic_mat_exp_implementation(object):
         return_integrand=False):
         """ Implement equation 31 from Anda without plugged in class instance attributes """
 
-        def integrand(_t):
-            B_2_dict = self.big_b_tilde(
-                _t,
-                order_n=2,
-                H_e=H_e,
-                rho_ex=rho_ex,
-                A=A,
-                e_At=None,
-                return_e_At_in_dict=True)
-            B_2 = B_2_dict['B_n']
-            e_At = B_2_dict['e_At']
-    #         print(f"e_At = {e_At}")
-            B_3 = self.big_b_tilde(
-                _t,
-                order_n=3,
-                H_e=H_e,
-                rho_ex=rho_ex,
-    #             A = A,
-                e_At=e_At,
-                )
-            B_4 = self.big_b_tilde(
-                _t,
-                order_n=4,
-                H_e=H_e,
-                rho_ex=rho_ex,
-                e_At=e_At,)
-            B_5 = self.big_b_tilde(
-                _t,
-                order_n=5,
-                H_e=H_e,
-                rho_ex=rho_ex,
-                e_At=e_At,)
-            B_6 = self.big_b_tilde(
-                _t,
-                order_n=6,
-                H_e=H_e,
-                rho_ex=rho_ex,
-                e_At=e_At,)
-    #         print(f"B_2 = {B_2}")
-    #         print(f"B_3 = {B_3}")
-            exp_arg = (
-                B_2
-                +
-                B_3
-                ## Stop here fore 3rd order Cum. expansion
-                +
-                B_4
-                -
-                (B_2**2)/2
-                ## Stop here for 4th order Cum. expansion
-                +
-                B_5
-                -
-                B_2*B_3
-                ## Stope here fore 5th order Cum. expansion
-                +
-                B_6
-                -
-                B_2*B_4
-                -
-                (B_3**2)/2
-                +
-                (B_2**3)/3
-                )
-
-            ## Return integrand with time on last dimensions and omegas on
-            ## first.
-    #         print(f"omega = {omega}")
-    #         print(f"gamma = {gamma}")
-    #         print(f"_t = {_t}")
-    #         print(f"exp_arg = {exp_arg}")
-            _integrand = np.real(
-                np.exp(
-                    (-1j*omega[:, None] - gamma)*_t[None, :]
-                    +
-                    exp_arg[None, :])
-                    )
-    #         print(f"integrand = {_integrand}")
-            return _integrand
-
         ## Build t vector
         ts = np.linspace(0, t_max, t_points)*1e-15
 
         if return_integrand:
-            return (ts, integrand(ts))
+            return (ts, self.integrand(ts, omega, gamma, H_e, rho_ex, A))
         ## Integrate with trapazoid rule
-        integral = inte.trapz(integrand(ts), ts, axis=-1)
+        integral = inte.trapz(self.integrand(ts, omega, gamma, H_e, rho_ex, A), ts, axis=-1)
 
         ## Integrate with scipy quadriture function
     #     integral = integ.quad(integrand, 0, t_max*1e-15
@@ -1494,67 +1547,202 @@ class anharmonic_mat_exp_implementation(object):
             return_integrand=return_integrand)
 
 
-    ## Example usage from notebook
-    # mor_lam_g = [
-    #     0,
-    #     0,
-    #     0.500141 - .5, ## to account for H_0
-    #     - 0.0456629,
-    #     0.00243193,
-    #     - 0.000095158,
-    #     2.99251*1e-6,
-    #     - 7.93207*1e-8,
-    #     + 1.82486*1e-9,
-    #     - 3.71702*1e-11,
-    #     6.80059*1e-13,
-    #     - 1.13*1e-14,
-    #     + 1.72033*1e-16,
-    #     ]
+class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
+    """ Implementation of the generalized solution to the displaced
+        oscillator problem for arbitrary polynomial vibrational energy
+        surfaces in both the ground and excited electronic states.
+        Following the 2016 JCTC by Anda et al. (With some corrections
+        for their cavalier treatment of units).
 
-    # ## Number of oscillator states used for representation of general
-    # ## potential energy eigenstates
-    # basis_size = 20
-    # ## Energy spacing of unperterbed vibration
-    # hbarw0_mor = 1
-    # ##
-    # unitless_d = 1.6
-    # ## Build excited state lambdas from ground state and displacement
-    # mor_lam_e = displaced_lambdas(mor_lam_g, d=unitless_d)
+        Args:
+        ~~~~~
+            poly_prefs_g: (Array of length equal to polynomial order - 1)
+                The prefacters to the perterbing potential surface,
+                notated as lambda in the JCTC. They describe the vibrational
+                potential surface for the electronic ground state minus the
+                harmonic term. They are organized such that the [i] element is
+                the ith order term of the polynomial
+            poly_prefs_e: (same as above)
+                Similarly, these are the lambda prefactors for the vibrational
+                potential in the electronic excited state.
+            basis_size: (int)
+                The number of harmonic oscillator states used to represent the
+                anharmonic eigenstates
+            hbarw0: (float)
+                The oscillatorion energy of the unperterbed harmonic oscillator
+                potential. Any nonzero 'poly_prefs_g[2]' or 'poly_prefs_e[2]'
+                will effectivly shift this value. Because of that subdlty, it
+                is primarily used to dimensionalize/nondimensionalize various
+                quantities like that displacement below.
+            unitless_d: (float)
+                nondimensionalized displacement between the equilibrium
+                positions (minimum) of the vibrational potential energy
+                surfaces of the ground and excited electronic states. For a
+                harmonic system (), It is related to the Huang-Rys factor by
+                    S = unitless_d^2 / 2
+            T: (float)
+                Temperature in Kelvin
 
-    # ## Define Vibrational Hamiltonians in units of energy (by multiplying by
-    # ## the unperturbed vibrational energy spacing).
-    # ## -----
-    # ## Vibrational Hamiltonian in the electronic ground state
-    # Hg_mor = vib_ham(mor_lam_g,basis_size,)*hbarw0_mor
-    # ## Vibrational Hamiltonian in the electronic excited state
-    # He_mor = vib_ham(mor_lam_e,basis_size,)*hbarw0_mor
+        """
 
-    # ## Assign the temperature
-    # T_mor = .3*hbarw0_mor/k
-    # ## Define the Energy Gap fluctuation operator (in units of energy as for
-    # ## the vibrational Hamiltonians above)
-    # D_mor = gap_fluc_op(basis_size, mor_lam_g, mor_lam_e, T_mor)*hbarw0_mor
-    # ## Define the A matrix for use in the matrix eponential theorm used to
-    # ## calculate the Cumulants.
-    # A_mor = a_matrix(He_mor, D_mor, order=7)
-    # ## Define density matrix from operators already define.
-    # rho_mor = rho_e(He_mor, T_mor)
+    def __init__(self,
+        poly_prefs_g,
+        poly_prefs_e,
+        basis_size,
+        hbarw0,
+        hbar_gamma,
+        unitless_d,
+        T,
+        integration_t_max=20,
+        integration_t_points=600,
+        # calc_matricies_on_init=True,
+        A_mat_order=7,
+        ):
 
-    # ## Plot
-    # hbar_omegas_mor = np.linspace(-5, 5, 400)
-    # lineshape_mor = flu_lineshape(
-    #     omega=hbar_omegas_mor/hbar,
-    #     gamma=.18/hbar,
-    #     H_e=He_mor,
-    #     rho_ex=rho_mor,
-    #     A=A_mor,
-    #     t_max=20,
-    #     t_points=600,
-    # #     return_integrand=True
-    #     )
-    # plt.plot(hbar_omegas_mor-unitless_d**2./2, lineshape_mor)
-    # plt.axvline(lw=1, ls='--', c='k')
+        ## Lambdas will be expected to have n columns for an n-1 order polynomial
+        ## and m rows for m different vibrational modes
+        if poly_prefs_g.shape != poly_prefs_e.shape:
+            raise ValueError('lambda_g and lambda_e must have same shape')
+        self.poly_prefs_g = poly_prefs_g
+        self.poly_prefs_e = poly_prefs_e
 
-    # plt.xlabel(r'$\frac{\omega - \omega_{eg}}{\omega_0}$', fontsize=10)
-    # plt.ylabel(r'Emission Lineshape [a.u.]', fontsize=10)
+        self.basis_size = basis_size
+        ## The number of vibrational energies should match the number of modes
+        if len(hbarw0) != poly_prefs_g.shape[0]:
+            raise ValueError('number of vib. energies much match number of rows in lambda arrays')
+        self.hbarw0 = hbarw0
+
+        self.hbar_gamma = hbar_gamma
+        if len(unitless_d) != len(hbarw0):
+            raise ValueError('must have same number of displacements as vibrational energies')
+        self.unitless_d = unitless_d
+
+        self.T = T
+
+        self.integration_t_max = integration_t_max
+        self.integration_t_points = integration_t_points
+
+        self.num_modes = self.poly_prefs_g.shape[0]
+
+        # if calc_matricies_on_init:
+        self.calc_matricies(A_mat_order)
+
+        ## Calculate 0-0 transition energy for fixing mysterios spectral offset
+        self.hbar_omega_eg = self.calc_hbar_omega_eg(
+            basis_size=self.basis_size,
+            lambda_g_array=self.poly_prefs_g,
+            lambda_e_array=self.poly_prefs_e,
+            T=self.T
+            )
+
+    ## I think I need to rewrite
+    ## calculation of hweg for shift correction
+    ## - calc_matricies
+    ##     - to calculate matricies for each mode, maybe store in a new dimention
+    ## - lineshape to work with new dimention in matricies
+    ## - integrand
+    ##     - to sum cumulant expantions for each mode
+    ##     - also to shift each mode by hw_eg (weird because thay should all be hte same...)
+    def calc_hbar_omega_eg(self, basis_size, lambda_g_array, lambda_e_array, T):
+        """ Needs density matrix defined , unlike single mode implementation"""
+        density_matrix_e = self.rho_e
+
+        hbar_omega_eg = np.zeros(self.num_modes, dtype='complex')
+        for i in range(self.num_modes):
+            for n in range(lambda_e_array.shape[1]):
+                xk = self.x_tothe_k(n, basis_size)
+                hbar_omega_eg[i] += (
+                    (lambda_e_array[i, n] - lambda_g_array[i, n])
+                    *
+                    -np.trace(xk@density_matrix_e[i])
+                    )
+        return hbar_omega_eg
+###########
+
+    def calc_matricies(self, A_mat_order):
+
+        self.H_e = np.empty((
+            self.num_modes, self.basis_size, self.basis_size), dtype='complex')
+        self.Delta = np.empty((
+            self.num_modes, self.basis_size, self.basis_size), dtype='complex')
+        self.A = np.empty((
+            self.num_modes,
+            self.basis_size*A_mat_order,
+            self.basis_size*A_mat_order), dtype='complex')
+        self.rho_e = np.empty((
+            self.num_modes, self.basis_size, self.basis_size), dtype='complex')
+
+        ## Iterate through mode indicies
+        for i in range(self.num_modes):
+            ## Ground state not needed for emission outside gap operater
+            # self.H_g = self.vib_ham(self.poly_prefs_g, self.basis_size)
+            self.H_e[i] = self.vib_ham(
+                self.poly_prefs_e[i],
+                self.basis_size
+                )*self.hbarw0[i]
+
+            self.Delta[i] = self.gap_fluc_op(
+                basis_size=self.basis_size,
+                lambda_g_array=self.poly_prefs_g[i],
+                lambda_e_array=self.poly_prefs_e[i],
+                T=self.T
+                )*self.hbarw0[i]
+
+            self.A_mat_order = A_mat_order
+            self.A[i] = self.a_matrix(self.H_e[i], self.Delta[i], order=self.A_mat_order)
+
+            self.rho_e[i] = self.rho(self.H_e[i], self.T)
+
+
+    def calculate_cumulants(self, _t, H_e, rho_ex, A):
+
+        if not hasattr(self, 'cum_sum'):
+            # print('_t = ', _t)
+            self.cum_sum = np.zeros((self.num_modes, len(_t),), dtype='complex')
+            # print('self.cum_sum.shape = ', self.cum_sum.shape)
+            # print('self.cum_sum.shape[0] = ', self.cum_sum.shape[0])
+            ## Calculate for each mode
+            for i in range(self.num_modes):
+                self.cum_sum[i] = self.sum_of_cumulants(_t, H_e[i], rho_ex[i], A[i])
+        else: pass
+
+
+    def integrand(self, _t, omega, gamma, H_e, rho_ex, A, isolate_mode=None, which_linespace='emission'):
+
+        self.calculate_cumulants(_t, H_e, rho_ex, A)
+        ## Return integrand with time on last dimensions and omegas on
+        ## first.
+
+        if isolate_mode is None:
+            ## Sum Cululants from each mode
+            cum_sum = self.cum_sum.sum(axis=0)
+            ## Sum w_eg from each mode
+            hbar_omega_eg = self.hbar_omega_eg.sum()
+        ## If we want a particular mode
+        elif type(isolate_mode) is int:
+            ## Get specific Cumulant sum
+            cum_sum = self.cum_sum[isolate_mode]
+            ## Get specific w_eg
+            hbar_omega_eg = self.hbar_omega_eg[isolate_mode]
+
+        ## Shift frequency axis to 0-0 line according to which lineshape we want
+        ## According to calculations prescribed by Mukamel in the case
+        ## where w_eg_0 (the energy difference between minima) is zero
+        ## for plotting convinience (and fitting, since it is just an
+        ## overall shift).
+        if which_linespace == 'emission':
+            omega += hbar_omega_eg
+        elif which_linespace == 'absorption':
+            omega -= hbar_omega_eg
+        else:
+            raise ValueError("which_linespace arg must specify 'absorption' or 'emission'")
+
+        ## Build integrand array in frequency and time
+        _integrand = np.real(
+            np.exp(
+                (-1j*omega[:, None] - gamma)*_t[None, :]
+                +
+                cum_sum[None, :])
+                )
+        return _integrand
 
