@@ -1318,15 +1318,15 @@ class anharmonic_mat_exp_implementation(object):
 
 
     def calc_hbar_omega_eg(self, basis_size, lambda_g_array, lambda_e_array, T):
-        density_matrix_g = self.rho(self.vib_ham(lambda_g_array, basis_size), T=T)
+        density_matrix_e = self.rho(self.vib_ham(lambda_e_array, basis_size), T=T)
 
         hbar_omega_eg = 0
         for n in range(len(lambda_e_array)):
             xk = self.x_tothe_k(n, basis_size)
             hbar_omega_eg += (
-                (lambda_e_array[n] - lambda_g_array[n])
+                -(lambda_e_array[n] - lambda_g_array[n])
                 *
-                -np.trace(xk@density_matrix_g)
+                np.trace(xk@density_matrix_e)
                 )
         return hbar_omega_eg
 
@@ -1487,9 +1487,9 @@ class anharmonic_mat_exp_implementation(object):
         ## Return integrand with time on last dimensions and omegas on
         ## first.
         if which_linespace == 'emission':
-            omega += self.hbar_omega_eg
+            omega += self.hbar_omega_eg/hbar
         elif which_linespace == 'absorption':
-            omega -= self.hbar_omega_eg
+            omega -= self.hbar_omega_eg/hbar
         else:
             raise ValueError("which_linespace arg must specify 'absorption' or 'emission'")
 
@@ -1654,7 +1654,7 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
                 hbar_omega_eg[i] += (
                     (lambda_e_array[i, n] - lambda_g_array[i, n])
                     *
-                    -np.trace(xk@density_matrix_e[i])
+                    np.trace(xk@density_matrix_e[i])
                     )
         return hbar_omega_eg
 ###########
@@ -1731,9 +1731,9 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
         ## for plotting convinience (and fitting, since it is just an
         ## overall shift).
         if which_linespace == 'emission':
-            omega += hbar_omega_eg
+            omega += hbar_omega_eg/hbar
         elif which_linespace == 'absorption':
-            omega -= hbar_omega_eg
+            omega -= hbar_omega_eg/hbar
         else:
             raise ValueError("which_linespace arg must specify 'absorption' or 'emission'")
 
