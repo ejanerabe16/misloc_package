@@ -1140,6 +1140,33 @@ def poly_from_lambdas(x, lambdas):
 
     return y
 
+def lambda_generator_Morse(a, D):
+    """ This is a function that returns the lambda prefactors for a Morse
+        Potential expanded to 12th order.
+
+        Returns:
+        -------
+            lambdas: an array of perterbed polynomial prefactors determined from Mathematica
+        """
+    lambdas = np.array([
+        0,
+        0,
+        ## Make sure to subtract .5 from harmonic term to accound for the
+        ## unperterbed potential
+        a**2. * D - 0.5,
+        -a**3. * D,
+        (7/12) * a**4 * D,
+        (-1/4) * a**5 * D,
+        (31/360) * a**6 * D,
+        (-1/40) * a**7 * D,
+        (127/20160) * a**8 * D,
+        (-17/12096) * a**9 * D,
+        (73/259200) * a**10 * D,
+        (-31/604800) * a**11 * D,
+        (2047/239500800) * a**12 * D,
+        ])
+
+    return lambdas
 
 class anharmonic_mat_exp_implementation(object):
     """ Implementation of the generalized solution to the displaced
@@ -1162,7 +1189,7 @@ class anharmonic_mat_exp_implementation(object):
             basis_size: (int)
                 The number of harmonic oscillator states used to represent the
                 anharmonic eigenstates
-            hbarw0: (float)
+            hbar_omega_0: (float)
                 The oscillatorion energy of the unperterbed harmonic oscillator
                 potential. Any nonzero 'poly_prefs_g[2]' or 'poly_prefs_e[2]'
                 will effectivly shift this value. Because of that subdlty, it
@@ -1183,9 +1210,8 @@ class anharmonic_mat_exp_implementation(object):
         poly_prefs_g,
         poly_prefs_e,
         basis_size,
-        hbarw0,
+        hbar_omega_0,
         hbar_gamma,
-        unitless_d,
         T,
         integration_t_max=20,
         integration_t_points=600,
@@ -1196,9 +1222,8 @@ class anharmonic_mat_exp_implementation(object):
         self.poly_prefs_g = poly_prefs_g
         self.poly_prefs_e = poly_prefs_e
         self.basis_size = basis_size
-        self.hbarw0 = hbarw0
+        self.hbar_omega_0 = hbar_omega_0
         self.hbar_gamma = hbar_gamma
-        self.unitless_d = unitless_d
         self.T = T
         self.integration_t_max = integration_t_max
         self.integration_t_points = integration_t_points
@@ -1218,12 +1243,12 @@ class anharmonic_mat_exp_implementation(object):
 
         self.H_g = (
             self.vib_ham(self.poly_prefs_e, self.basis_size)
-            *self.hbarw0
+            *self.hbar_omega_0
             )
 
         self.H_e = (
             self.vib_ham(self.poly_prefs_e, self.basis_size)
-            *self.hbarw0
+            *self.hbar_omega_0
             )
 
         self.Delta = self.gap_fluc_op(
@@ -1231,7 +1256,7 @@ class anharmonic_mat_exp_implementation(object):
             lambda_g_array=self.poly_prefs_g,
             lambda_e_array=self.poly_prefs_e,
             T=self.T
-            )*self.hbarw0
+            )*self.hbar_omega_0
 
         self.A_mat_order = A_mat_order
         self.A = self.a_matrix(self.H_e, self.Delta, order=self.A_mat_order)
@@ -1328,7 +1353,7 @@ class anharmonic_mat_exp_implementation(object):
                 *
                 np.trace(xk@density_matrix_e)
                 )
-        return hbar_omega_eg
+        return hbar_omega_eg*self.hbar_omega_0
 
 
     def a_matrix(self, H_e, Delta, order):
@@ -1511,16 +1536,17 @@ class anharmonic_mat_exp_implementation(object):
         A,
         t_max=1000,
         t_points=100,
-        return_integrand=False):
+        return_integrand=False,
+        **kwargs):
         """ Implement equation 31 from Anda without plugged in class instance attributes """
 
         ## Build t vector
         ts = np.linspace(0, t_max, t_points)*1e-15
 
         if return_integrand:
-            return (ts, self.integrand(ts, omega, gamma, H_e, rho_ex, A))
+            return (ts, self.integrand(ts, omega, gamma, H_e, rho_ex, A, **kwargs))
         ## Integrate with trapazoid rule
-        integral = inte.trapz(self.integrand(ts, omega, gamma, H_e, rho_ex, A), ts, axis=-1)
+        integral = inte.trapz(self.integrand(ts, omega, gamma, H_e, rho_ex, A, **kwargs), ts, axis=-1)
 
         ## Integrate with scipy quadriture function
     #     integral = integ.quad(integrand, 0, t_max*1e-15
@@ -1533,7 +1559,8 @@ class anharmonic_mat_exp_implementation(object):
 
     def emission_lineshape(self,
         hbar_omegas,
-        return_integrand=False):
+        return_integrand=False,
+        **kwargs):
         """ Implement equation 31 from Anda with parameters taken from
             class instance attributes """
         return self._flu_lineshape(
@@ -1544,7 +1571,8 @@ class anharmonic_mat_exp_implementation(object):
             A=self.A,
             t_max=self.integration_t_max,
             t_points=self.integration_t_points,
-            return_integrand=return_integrand)
+            return_integrand=return_integrand,
+            **kwargs)
 
 
 class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
@@ -1568,20 +1596,22 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
             basis_size: (int)
                 The number of harmonic oscillator states used to represent the
                 anharmonic eigenstates
-            hbarw0: (float)
+            hbar_omega_0: (float)
                 The oscillatorion energy of the unperterbed harmonic oscillator
                 potential. Any nonzero 'poly_prefs_g[2]' or 'poly_prefs_e[2]'
                 will effectivly shift this value. Because of that subdlty, it
                 is primarily used to dimensionalize/nondimensionalize various
                 quantities like that displacement below.
-            unitless_d: (float)
+            T: (float)
+                Temperature in Kelvin
+            OBSOLETE
+            ~~~~~~~~
+            nitless_d: (float)
                 nondimensionalized displacement between the equilibrium
                 positions (minimum) of the vibrational potential energy
                 surfaces of the ground and excited electronic states. For a
                 harmonic system (), It is related to the Huang-Rys factor by
                     S = unitless_d^2 / 2
-            T: (float)
-                Temperature in Kelvin
 
         """
 
@@ -1589,9 +1619,8 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
         poly_prefs_g,
         poly_prefs_e,
         basis_size,
-        hbarw0,
+        hbar_omega_0,
         hbar_gamma,
-        unitless_d,
         T,
         integration_t_max=20,
         integration_t_points=600,
@@ -1608,14 +1637,14 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
 
         self.basis_size = basis_size
         ## The number of vibrational energies should match the number of modes
-        if len(hbarw0) != poly_prefs_g.shape[0]:
+        if len(hbar_omega_0) != poly_prefs_g.shape[0]:
             raise ValueError('number of vib. energies much match number of rows in lambda arrays')
-        self.hbarw0 = hbarw0
+        self.hbar_omega_0 = hbar_omega_0
 
         self.hbar_gamma = hbar_gamma
-        if len(unitless_d) != len(hbarw0):
-            raise ValueError('must have same number of displacements as vibrational energies')
-        self.unitless_d = unitless_d
+        # if len(unitless_d) != len(hbar_omega_0):
+        #     raise ValueError('must have same number of displacements as vibrational energies')
+        # self.unitless_d = unitless_d
 
         self.T = T
 
@@ -1647,16 +1676,16 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
         """ Needs density matrix defined , unlike single mode implementation"""
         density_matrix_e = self.rho_e
 
-        hbar_omega_eg = np.zeros(self.num_modes, dtype='complex')
+        hbar_omega_eg = np.zeros(self.num_modes, dtype='float')
         for i in range(self.num_modes):
             for n in range(lambda_e_array.shape[1]):
                 xk = self.x_tothe_k(n, basis_size)
                 hbar_omega_eg[i] += (
-                    (lambda_e_array[i, n] - lambda_g_array[i, n])
+                    -(lambda_e_array[i, n] - lambda_g_array[i, n])
                     *
-                    np.trace(xk@density_matrix_e[i])
+                    np.trace(xk@density_matrix_e[i]).real
                     )
-        return hbar_omega_eg
+        return hbar_omega_eg*self.hbar_omega_0
 ###########
 
     def calc_matricies(self, A_mat_order):
@@ -1679,14 +1708,14 @@ class multi_mode_anharmonic_emission(anharmonic_mat_exp_implementation):
             self.H_e[i] = self.vib_ham(
                 self.poly_prefs_e[i],
                 self.basis_size
-                )*self.hbarw0[i]
+                )*self.hbar_omega_0[i]
 
             self.Delta[i] = self.gap_fluc_op(
                 basis_size=self.basis_size,
                 lambda_g_array=self.poly_prefs_g[i],
                 lambda_e_array=self.poly_prefs_e[i],
                 T=self.T
-                )*self.hbarw0[i]
+                )*self.hbar_omega_0[i]
 
             self.A_mat_order = A_mat_order
             self.A[i] = self.a_matrix(self.H_e[i], self.Delta[i], order=self.A_mat_order)
