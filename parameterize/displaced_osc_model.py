@@ -1,8 +1,8 @@
 import numpy as np
 
-# from ..calc import BEM_simulation_wrapper as bem
-# from ..calc import fitting_misLocalization as fit
-# from ..calc import coupled_dipoles as cp
+from ..calc import BEM_simulation_wrapper as bem
+from ..calc import fitting_misLocalization as fit
+from ..calc import coupled_dipoles as cp
 
 import scipy.integrate as inte
 import scipy.io as sio
@@ -866,13 +866,9 @@ class mol_fluo_model(object):
         g):
 
         if type(omega_m_omega_eq) is np.ndarray:
-<<<<<<< HEAD
-            return 1/2 * np.real(
-=======
             ## Have to replace the (1/pi) prefactor with (1/2) in order to
             ## get an area normalized result. Don't know why.
             return (1/2) * np.real(
->>>>>>> caaa6e0114727560118822b7b72e6cdea384ed5e
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -880,11 +876,7 @@ class mol_fluo_model(object):
                 )
 
         else:
-<<<<<<< HEAD
-            return 1/2 * np.real(
-=======
             return (1/2) * np.real(
->>>>>>> caaa6e0114727560118822b7b72e6cdea384ed5e
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g))
 
     def emission_lineshape(
@@ -1017,13 +1009,9 @@ class anda_mol_fluo_model(mol_fluo_model):
             gamma = gamma[0]
 
         if type(omega_m_omega_eq) is np.ndarray:
-<<<<<<< HEAD
-            return 1/2 * np.real(
-=======
             ## Have to replace the (1/pi) prefactor with (1/2) in order to
             ## get an area normalized result. Don't know why.
             return 2**-1 * np.real(
->>>>>>> caaa6e0114727560118822b7b72e6cdea384ed5e
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -1034,11 +1022,7 @@ class anda_mol_fluo_model(mol_fluo_model):
                 )
 
         else:
-<<<<<<< HEAD
-            return 1/2 * np.real(
-=======
             return 2**-1 * np.real(
->>>>>>> caaa6e0114727560118822b7b72e6cdea384ed5e
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g)
                 *
                 np.exp(
