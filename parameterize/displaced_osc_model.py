@@ -1002,7 +1002,7 @@ class anda_mol_fluo_model(mol_fluo_model):
             gamma = gamma[0]
 
         if type(omega_m_omega_eq) is np.ndarray:
-            return np.pi**-1 * np.real(
+            return 1/2 * np.real(
                 np.exp(
                     (1j*(omega_m_omega_eq[:, None])*t[None, :]*1e-15)
                     -
@@ -1013,7 +1013,7 @@ class anda_mol_fluo_model(mol_fluo_model):
                 )
 
         else:
-            return np.pi**-1 * np.real(
+            return 1/2 * np.real(
                 np.exp(1j*(omega_m_omega_eq)*t*1e-15 - g)
                 *
                 np.exp(
